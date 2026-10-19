@@ -530,6 +530,8 @@
   }
 
   const divUnits = divs => divs.reduce((u, v) => addU(u, v.u), emptyU());
+  // stärkste Einheit einer Gruppe – bestimmt die Figur auf der Karte
+  const strongestType = u => [...TYPES].reverse().find(t => u[t] > 0) || 'w';
 
   // ---------- Spiel ----------
 
@@ -874,7 +876,7 @@
           return fail(`Zu weit – diese Truppen schaffen ${mp} Provinz${mp === 1 ? '' : 'en'} pro Zug (nur durch eigenes Land).`);
         }
         arrive(t, detach(st, f, spec));
-        st.march = { id: ++st.seq, from: a.from, to: a.to, n: total(units) };
+        st.march = { id: ++st.seq, from: a.from, to: a.to, n: total(units), fig: strongestType(units) };
         return { ok: true };
       }
       case 'attack': {
@@ -921,13 +923,13 @@
           else if (prev >= 0) log(st, `⚔️ {0} erobert ${t.name} von {1}.` + reward, p, prev);
           else log(st, `🚩 {0} erobert ${t.name}.` + reward, p);
           checkEliminated(st, prev);
-          st.battle = { id: ++st.seq, from: main, froms, to: a.to, won, aL, dL, p: o.p, reward, prev };
+          st.battle = { id: ++st.seq, from: main, froms, to: a.to, won, aL, dL, p: o.p, reward, prev, fig: strongestType(force) };
         } else {
           aL = total(force);
           dL = lossesFrom(t.divs, o.A * 0.5 * spread(), tt => defOf(st, prev, tt, false));
           sync(t);
           if (prev >= 0) log(st, `🛡️ {1} verteidigt ${t.name} gegen {0}.`, p, prev);
-          st.battle = { id: ++st.seq, from: main, froms, to: a.to, won, aL, dL, p: o.p, prev };
+          st.battle = { id: ++st.seq, from: main, froms, to: a.to, won, aL, dL, p: o.p, prev, fig: strongestType(force) };
         }
         return { ok: true, won };
       }
@@ -1098,7 +1100,7 @@
   }
 
   global.K = {
-    AI_CFG, divUnits, createGame, generateWorld, applyAction, aiAction, aiRespond, stats, income, provinceYield, score, allied, odds, total, avail,
+    AI_CFG, divUnits, strongestType, createGame, generateWorld, applyAction, aiAction, aiRespond, stats, income, provinceYield, score, allied, odds, total, avail,
     moveTargets, mpOf, canBuild, canResearch, unitUnlocked, hasTech, isCity, defMult, hexNeighbor, hexXY, emptyU, addU, upkeepFor,
     COLORS, UNITS, TYPES, TERRAIN, PSIZE, BUILDINGS, TECHS, MAPS, SIZES,
   };

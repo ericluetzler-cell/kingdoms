@@ -9,6 +9,7 @@
   const ID_PREFIX = 'kingdoms-game-';
   const BLDG_ORDER = ['lumber', 'farm', 'mine', 'library', 'caravan', 'fort'];
   const newSeed = () => (Math.random() * 2 ** 32) >>> 0;
+  const APP_VERSION = '8';
 
   const S = {
     role: null,            // 'local' | 'host' | 'guest'
@@ -285,6 +286,7 @@
     if (!d || typeof d !== 'object') return;
     if (d.t === 'join') {
       if (S.state) return conn.send({ t: 'err', msg: 'Das Spiel läuft bereits.', fatal: true });
+      if (d.v !== APP_VERSION) return conn.send({ t: 'err', msg: 'Ihr habt verschiedene Versionen von Kingdoms. Bitte beide die Seite neu laden (Strg+F5 bzw. am Handy neu öffnen).', fatal: true });
       if (S.lobby.length >= 6) return conn.send({ t: 'err', msg: 'Der Raum ist voll.', fatal: true });
       S.conns.set(conn.peer, conn);
       S.lobby.push({ name: String(d.name || 'Gast').slice(0, 16), type: 'human', cid: conn.peer });
@@ -328,7 +330,7 @@
     peer.on('open', () => {
       const conn = peer.connect(ID_PREFIX + code, { reliable: true });
       S.conn = conn;
-      conn.on('open', () => conn.send({ t: 'join', name: myName() }));
+      conn.on('open', () => conn.send({ t: 'join', name: myName(), v: APP_VERSION }));
       conn.on('data', onGuestData);
       conn.on('close', () => { if (S.role === 'guest') { toast('Verbindung zum Gastgeber verloren.'); toMenu(); } });
     });
@@ -400,6 +402,7 @@
     // nach einem Kampf etwas warten, damit man die Animation sieht
     let delay = watching ? 420 : 60;
     if (watching && st.battle && st.battle.id !== S.lastAiBattle) { S.lastAiBattle = st.battle.id; delay = 1500; }
+    else if (watching && st.march && st.march.id !== S.lastAiMarch) { S.lastAiMarch = st.march.id; delay = 1150; }
     S.aiTimer = setTimeout(() => {
       const p = st.turn;
       const r = K.applyAction(st, p, K.aiAction(st, p));
@@ -492,7 +495,14 @@
     const wrap = $('#mapwrap'), pts = new Map();
     let start = null, dragged = false, pinch = null, unitDrag = null;
     const provAt = (x, y) => { const el = document.elementFromPoint(x, y); const g = el && el.closest && el.closest('.prov'); return g ? +g.dataset.i : -1; };
+    wrap.addEventListener('contextmenu', e => {
+      e.preventDefault();
+      if (!S.state || S.sel < 0) return;
+      const i = provAt(e.clientX, e.clientY);
+      if (i >= 0 && i !== S.sel) onCell(i, true);
+    });
     wrap.addEventListener('pointerdown', e => {
+      if (e.button === 2) return;
       pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
       wrap.setPointerCapture(e.pointerId);
       const ctr = e.target.closest && e.target.closest('.ctr');
@@ -584,6 +594,9 @@
         if (!(S.tut && st.round === 1)) { splash(`Dein Zug<small>Runde ${st.round}</small>`); Sound.play('turn'); }
       }
     }
+    // ankommende Truppen erst nach ihrem Lauf über die Karte zeigen
+    if (st.march && st.march.id !== S.seenMarch) S.arrive = { i: st.march.to, t0: performance.now(), ms: 1050 };
+    if (st.battle && st.battle.id !== S.seenBattle && st.battle.won) S.arrive = { i: st.battle.to, t0: performance.now(), ms: 700 };
     fixSelection();
     renderProvinces();
     renderNations();
@@ -591,6 +604,7 @@
     renderUnits();
     renderHud();
     renderBar();
+    document.documentElement.style.setProperty('--dock-h', ($('#actionbar').offsetHeight || 0) + 'px');
     renderPlayers();
     renderLog();
     renderChat();
@@ -687,51 +701,72 @@
       `<path class="nb-out" d="${d}"/><path class="nb" d="${d}" stroke="${st.players[o].color}"/>`).join('');
   }
 
+  // Gebäude stehen sichtbar in der Provinz; neu gebaute erscheinen mit einer kleinen Bau-Animation
+  const BLDG_SPOT = [-27, 4];
   function renderLabels() {
     const st = S.state, C = st.cells;
+    S.seenBldg = S.seenBldg || {};
     let html = '';
-    C.forEach(c => {
+    C.forEach((c, i) => {
       const { lx: x, ly: y } = c;
       const col = c.owner >= 0 ? st.players[c.owner].color : '#cfc6b2';
-      html += `<text class="pname${c.sz === 'S' ? ' small' : ''}" x="${x}" y="${y - 9}">${esc(c.name)}</text>`;
+      html += `<text class="pname${c.sz === 'S' ? ' small' : ''}" x="${x}" y="${y - 15}">${esc(c.name)}</text>`;
       if (K.isCity(c)) {
-        html += `<use href="#castle" x="${x - 11}" y="${y - 33}" width="22" height="19" style="color:${col}" filter="url(#f-soft)"/>`;
-        if (c.capital) html += `<use href="#crown" x="${x - 5}" y="${y - 40}" width="10" height="6.5"/>`;
-      } else if (c.building) html += `<use href="#b-${c.building}" x="${x - 7.5}" y="${y - 28}" width="15" height="15" filter="url(#f-soft)"/>`;
-      else if (c.hut) html += `<use href="#hut" x="${x - 7}" y="${y - 27}" width="14" height="14" filter="url(#f-soft)"/>`;
+        html += `<use href="#castle" x="${x - 12}" y="${y - 41}" width="24" height="20" style="color:${col}" filter="url(#f-soft)"/>`;
+        if (c.capital) html += `<use href="#crown" x="${x - 5}" y="${y - 48}" width="10" height="6.5"/>`;
+      }
+      const key = c.building ? i + ':' + c.building : '';
+      const fresh = key && S.seenBldg[i] !== undefined && S.seenBldg[i] !== key;
+      S.seenBldg[i] = key;
+      if (c.building && c.building !== 'fort') {
+        const bx = x + BLDG_SPOT[0], by = y + BLDG_SPOT[1];
+        let art = '';
+        if (c.building === 'farm') {
+          // Felder rund um den Hof
+          art = [[-9, 6, -12], [5, 9, 8], [-3, -7, 4]].map(([dx, dy, rot]) =>
+            `<g transform="translate(${bx + dx} ${by + dy}) rotate(${rot})"><rect class="field" x="-6" y="-3.5" width="12" height="7" rx=".8"/>
+              <path class="furrow" d="M-6 -1.6 H6 M-6 .2 H6 M-6 2 H6"/></g>`).join('');
+        } else if (c.building === 'mine') art = `<path class="spoil" d="M${bx - 9} ${by + 8} q5 -6 10 0 z"/>`;
+        else if (c.building === 'lumber') art = `<path class="stump" d="M${bx + 7} ${by + 6} h3 v2 h-3 z M${bx - 10} ${by + 7} h3 v2 h-3 z"/>`;
+        html += `<g class="bldg${fresh ? ' fresh' : ''}" style="transform-origin:${bx}px ${by + 8}px">${art}
+          <use href="#b-${c.building}" x="${bx - 9}" y="${by - 9}" width="18" height="18" filter="url(#f-soft)"/></g>`;
+      }
+      if (c.hut) html += `<use href="#hut" x="${x + BLDG_SPOT[0] - 7}" y="${y + BLDG_SPOT[1] - 7}" width="14" height="14" filter="url(#f-soft)"/>`;
     });
     $('#labels').innerHTML = html;
   }
 
-  // Divisions-Marker wie bei Hearts of Iron: ein Marker je Division (Symbol der stärksten Einheit + Stärke)
+  // Divisionen wie bei Hearts of Iron: eine Figur je Division (stärkste Einheit) auf einem Sockel mit der Stärke
+  const FIG_W = { w: 12, a: 12, p: 12, k: 17, c: 17 };
   function renderUnits() {
     const st = S.state, C = st.cells;
     let html = '';
     C.forEach((c, i) => {
       if (!c.divs || !c.divs.length) return;
-      const col = c.owner >= 0 ? st.players[c.owner].color : '#7a705d';
+      const col = c.owner >= 0 ? st.players[c.owner].color : '#8a7f69';
       const mine = c.owner === S.me && st.turn === S.me;
       const show = c.divs.slice(0, 4), more = c.divs.length - show.length;
-      const W = 19, gap = 1.5, perRow = 2;
-      const rows = Math.ceil((show.length + (more ? 1 : 0)) / perRow);
       const items = show.map(v => ({ v })).concat(more ? [{ more }] : []);
+      const W = 17, gap = 2, perRow = 3;
+      const arr = S.arrive && S.arrive.i === i && performance.now() - S.arrive.t0 < S.arrive.ms ? S.arrive : null;
       items.forEach((it, k) => {
         const row = Math.floor(k / perRow), inRow = Math.min(perRow, items.length - row * perRow);
         const x = c.lx - (inRow * W + (inRow - 1) * gap) / 2 + (k % perRow) * (W + gap);
-        const y = c.ly - 4 + row * 12.5 - (rows > 1 ? 3 : 0);
+        const y = c.ly - 8 + row * 24;
         if (it.more) {
-          html += `<g class="ctr more" data-i="${i}" transform="translate(${x.toFixed(1)} ${y.toFixed(1)})"><rect class="cbg" width="${W}" height="11" rx="2" fill="${col}"/>
-            <text class="cnum" x="${W / 2}" y="8.3">+${it.more}</text></g>`;
+          html += `<g class="ctr more" data-i="${i}" transform="translate(${x.toFixed(1)} ${y.toFixed(1)})">
+            <rect class="plate" x="0" y="15" width="${W}" height="8" rx="2" fill="${col}"/><text class="cnum" x="${W / 2}" y="21.2">+${it.more}</text></g>`;
           return;
         }
-        const v = it.v, t = strongest(v.u), n = K.total(v.u);
+        const v = it.v, t = K.strongestType(v.u), n = K.total(v.u), fw = FIG_W[t];
         const spent = mine && v.done, picked = i === S.sel && S.selDivs && S.selDivs.includes(v.id);
-        html += `<g class="ctr${spent ? ' spent' : ''}${picked ? ' picked' : ''}${mine && !spent ? ' ready' : ''}" data-i="${i}" data-d="${v.id}" transform="translate(${x.toFixed(1)} ${y.toFixed(1)})">
+        html += `<g class="ctr${spent ? ' spent' : ''}${picked ? ' picked' : ''}${mine && !spent ? ' ready' : ''}${arr ? ' arriving' : ''}" data-i="${i}" data-d="${v.id}" transform="translate(${x.toFixed(1)} ${y.toFixed(1)})"${arr ? ` style="animation-delay:${arr.ms - (performance.now() - arr.t0)}ms"` : ''}>
           <title>${esc(v.name)}: ${K.TYPES.filter(x2 => v.u[x2]).map(x2 => `${v.u[x2]} ${K.UNITS[x2].plural}`).join(', ')}</title>
-          <rect class="cbg" width="${W}" height="11" rx="2" fill="${col}"/>
-          <rect class="cic" x="1" y="1" width="9" height="9" rx="1.5"/>
-          <use href="#u-${t}" x="1.6" y="1.6" width="7.8" height="7.8"/>
-          <text class="cnum" x="${W - 4.6}" y="8.3">${n}</text></g>`;
+          <rect class="hit" x="-2" y="-3" width="${W + 4}" height="28" rx="3"/>
+          ${picked ? `<ellipse class="sel-glow" cx="${W / 2}" cy="15.5" rx="${W / 2 + 2}" ry="4"/>` : ''}
+          <use class="fig" href="#fig-${t}" x="${(W - fw) / 2}" y="-1" width="${fw}" height="17" style="color:${col}"/>
+          <rect class="plate" x="0" y="15" width="${W}" height="8" rx="2" fill="${col}"/>
+          <text class="cnum" x="${W / 2}" y="21.2">${n}</text></g>`;
       });
     });
     $('#units').innerHTML = html;
@@ -760,13 +795,17 @@
     S.fxTimer = setTimeout(() => { fx.innerHTML = ''; }, ms);
   }
 
-  const token = (d, col, icon, dur) => `<g><circle r="6.5" fill="${col}" stroke="#fff" stroke-width="1.5"/><use href="#u-${icon}" x="-4.2" y="-4.2" width="8.4" height="8.4" style="color:#fff"/>
-      <animateMotion dur="${dur}s" begin="indefinite" fill="freeze" path="${d}" calcMode="spline" keyTimes="0;1" keySplines=".5 0 .6 1"/></g>`;
+  // eine kleine Figur läuft den Pfad entlang (wippt beim Gehen)
+  const token = (d, col, fig, dur) => {
+    const fw = FIG_W[fig] || 12;
+    return `<g><g class="walker"><use href="#fig-${fig}" x="${-fw / 2 - 1}" y="-19" width="${fw + 2}" height="20" style="color:${col}"/></g>
+      <animateMotion dur="${dur}s" begin="indefinite" fill="freeze" path="${d}" calcMode="spline" keyTimes="0;1" keySplines=".45 0 .55 1"/></g>`;
+  };
 
   function playMarch(m) {
     const C = S.state.cells, col = S.state.players[C[m.to].owner].color;
     const d = curve(C[m.from], C[m.to]);
-    startFx(`<path class="fx-arrow" d="${d}" stroke="#4ade80"/>${token(d, col, 'w', 0.6)}`, 1800);
+    startFx(`<path class="fx-arrow march" d="${d}" stroke="#4ade80"/>${token(d, col, m.fig || 'w', 1.1)}`, 2000);
     Sound.play('march');
   }
 
@@ -780,7 +819,7 @@
       const a = k / 12 * Math.PI * 2, r = 14 + (k % 3) * 6;
       return `<circle class="fx-dust" cx="${x2}" cy="${y2}" r="${1.6 + (k % 2)}" style="--tx:${(Math.cos(a) * r).toFixed(1)}px;--ty:${(Math.sin(a) * r).toFixed(1)}px"/>`;
     }).join('');
-    let html = froms.map(f => { const d = curve(C[f], to); return `<path class="fx-arrow" d="${d}" stroke="${col}"/>${token(d, col, 'k', 0.55)}`; }).join('') +
+    let html = froms.map(f => { const d = curve(C[f], to); return `<path class="fx-arrow" d="${d}" stroke="${col}"/>${token(d, col, b.fig || 'w', 0.65)}`; }).join('') +
       `<circle class="fx-ring" cx="${x2}" cy="${y2}" r="16"/><circle class="fx-ring r2" cx="${x2}" cy="${y2}" r="24"/>${dust}`;
     if (b.won) {
       const ol = MapView.outlines(st.geo), f0 = C[b.from];
@@ -928,8 +967,8 @@
       status = `${B.name}: tippe auf eine eigene Provinz (${B.on.length === 4 ? 'beliebiges Gelände' : B.on.map(t => K.TERRAIN[t].name).join(', ')})`;
       shop = `<div class="shop">${BLDG_ORDER.map(btn).join('')}</div>`;
     } else {
-      status = S.sel >= 0 ? '<span class="lg mov"></span>marschieren · <span class="lg atk"></span>angreifen – oder Division auf ein Ziel ziehen'
-        : 'Tippe eine Division (Marker) oder eine Provinz an – oder ziehe einen Marker direkt auf ein Ziel';
+      status = S.sel >= 0 ? '<span class="lg mov"></span>marschieren · <span class="lg atk"></span>angreifen – Ziel antippen, Figur hinziehen oder Rechtsklick'
+        : 'Tippe eine Figur (Division) oder eine Provinz an – oder ziehe eine Figur direkt auf ein Ziel';
       if (S.sel >= 0) shop = armyPanel();
     }
     bar.innerHTML = `${tabs}<span class="status">${status}</span>
@@ -1220,10 +1259,10 @@
         <li><b>Zug beenden</b> – nicht ausgegebenes Gold und Wissen bleiben erhalten.</li>
       </ol>
       <h3>Divisionen</h3>
-      <p>Deine Truppen sind wie bei Hearts of Iron in <b>Divisionen</b> gruppiert. Jede Division hat einen eigenen <b>Marker</b> auf der Karte (Symbol der stärksten Einheit + Anzahl).
-        Tippe einen Marker an, um diese Division zu wählen (mit <b>Strg/Umschalt</b> mehrere), oder eine Provinz, um alle bereiten Divisionen zu wählen.
+      <p>Deine Truppen sind wie bei Hearts of Iron in <b>Divisionen</b> gruppiert. Jede Division steht als eigene <b>Figur</b> auf der Karte (Krieger, Bogenschütze, Speerkämpfer, Ritter oder Katapult – je nach stärkster Einheit), darunter ihre Stärke.
+        Tippe eine Figur an, um diese Division zu wählen (mit <b>Strg/Umschalt</b> mehrere), oder eine Provinz, um alle bereiten Divisionen zu wählen.
         Unten kannst du Divisionen mit ☑ an- und abwählen, mit <b>✂️ teilen</b> und mit <b>🔗 zusammenlegen</b>. Neu ausgebildete Truppen bilden eine eigene Division.
-        Dann tippst du ein <b>grünes</b> Ziel (marschieren) oder ein <b>rotes</b> Ziel (angreifen) – oder ziehst den <b>Marker direkt auf eine Provinz</b>.</p>
+        Dann tippst du ein <b>grünes</b> Ziel (marschieren) oder ein <b>rotes</b> Ziel (angreifen) – oder ziehst die <b>Figur direkt auf eine Provinz</b>. Am PC geht auch <b>Rechtsklick</b> aufs Ziel, wie bei Hearts of Iron.</p>
       <p>Jede Einheit hat <b>Bewegungspunkte</b> (Ritter 2, alle anderen 1, „Straßen“ +1) – die langsamste Einheit bestimmt das Tempo der Division. Jede Division handelt einmal pro Zug. Marschieren geht nur durch eigenes Land.
         Provinzen dürfen leer bleiben – aber dann kann sie jeder einfach einnehmen.</p>
       <h3>Kampf</h3>
@@ -1259,9 +1298,9 @@
   const capOf = () => S.state.cells.findIndex(c => c.capital && c.owner === S.me);
   const TUT = [
     { title: 'Willkommen, Herrscher!', text: 'In <b>Kingdoms</b> baust du ein Reich auf: Du eroberst Provinzen, errichtest Gebäude, erforschst Technologien – und besiegst deine Gegner. Ich zeige dir in ein paar Schritten, wie alles funktioniert.', next: 'Los geht\'s' },
-    { title: 'Deine Hauptstadt', text: 'Das ist deine <b>Hauptstadt</b> 👑 (gelb umrandet). Hier bildest du Einheiten aus. Die kleinen <b>Marker</b> sind deine <b>Divisionen</b> – Truppenverbände, die zusammen marschieren und kämpfen. <br><small>Tipp: Ziehen verschiebt die Karte, Mausrad oder zwei Finger zoomen.</small>', cell: capOf, next: 'Weiter' },
+    { title: 'Deine Hauptstadt', text: 'Das ist deine <b>Hauptstadt</b> 👑 (gelb umrandet). Hier bildest du Einheiten aus. Die kleinen <b>Figuren</b> sind deine <b>Divisionen</b> – Truppenverbände, die zusammen marschieren und kämpfen. Die Zahl darunter ist ihre Stärke. <br><small>Tipp: Ziehen verschiebt die Karte, Mausrad oder zwei Finger zoomen.</small>', cell: capOf, next: 'Weiter' },
     { title: 'Gold und Wissen', text: 'Oben siehst du deine Rohstoffe: <b>Gold</b> für Einheiten und Gebäude, <b>📜 Wissen</b> für Forschung. Die kleine Zahl ist dein Einkommen pro Runde – nach Abzug des <b>Unterhalts</b> für deine Armee.', el: '#res', next: 'Weiter' },
-    { title: 'Einheiten ausbilden', text: 'Unten ist <b>🛡️ Ausbilden</b> gewählt und der <b>Krieger</b> markiert. Tippe <b>zweimal auf deine Hauptstadt</b>, um 2 Krieger auszubilden. Neue Truppen bilden eine <b>eigene Division</b> – du siehst gleich einen zweiten Marker.', cell: capOf,
+    { title: 'Einheiten ausbilden', text: 'Unten ist <b>🛡️ Ausbilden</b> gewählt und der <b>Krieger</b> markiert. Tippe <b>zweimal auf deine Hauptstadt</b>, um 2 Krieger auszubilden. Neue Truppen bilden eine <b>eigene Division</b> – du siehst gleich eine zweite Figur.', cell: capOf,
       enter() { S.mode = 'recruit'; S.unit = 'w'; S.amount = 1; },
       on: ev => ev.kind === 'action' && ev.a.type === 'recruit' && (S.tut.recruited += K.total(ev.a.units)) >= 2 },
     { title: 'Zum Angriff!', text: 'Sehr gut! Wechsle jetzt unten zu <b>⚔️ Armeen</b>.', el: '[data-mode="army"]', on: () => S.mode === 'army' },
@@ -1274,7 +1313,7 @@
     { title: 'Der Angriffsplan', text: 'Hier siehst du die <b>Siegchance</b>. Du kannst Divisionen an- und abwählen – auch aus anderen Provinzen, die an das Ziel grenzen. Drücke <b>⚔️ Angreifen</b>.',
       el: '[data-pgo]', on: () => S.tut.attacked },
     { title: '', text: () => (S.state.battle && S.state.battle.won
-      ? '<b>Erobert!</b> Die Provinz gehört jetzt dir und bringt jede Runde Gold. Die Division hat sich für diesen Zug verausgabt (blasser Marker). Provinzen mit 🛖 Dorf geben beim Erobern eine Belohnung.'
+      ? '<b>Erobert!</b> Die Provinz gehört jetzt dir und bringt jede Runde Gold. Die Division hat sich für diesen Zug verausgabt (blasse Figur). Provinzen mit 🛖 Dorf geben beim Erobern eine Belohnung.'
       : '<b>Verloren</b> – das passiert! Je höher die Siegchance, desto sicherer. Greife am besten mit Übermacht an. <b>Große Provinzen</b> und Gebirge sind schwerer einzunehmen.'), next: 'Weiter' },
     { title: 'Gebäude bauen', text: 'Gebäude bringen mehr Ertrag. Wechsle zu <b>🔨 Bauen</b>, wähle den <b>Holzfäller</b> und tippe auf eine <b>eigene Waldprovinz</b> 🌲 (gelb markiert). Gehört dir noch kein Wald, erobere zuerst einen.',
       cell: () => S.state.cells.findIndex((c, i) => K.canBuild(S.state, S.me, i, 'lumber')),
@@ -1284,7 +1323,7 @@
     { title: 'Forschung', text: 'Mit Wissen erforschst du Technologien. Öffne oben die <b>🔬 Forschung</b>.', el: '#btnResearch', on: ev => ev.kind === 'research-open' },
     { title: 'Technologie wählen', text: 'Erforsche <b>Landwirtschaft</b> (4 Wissen). Damit kannst du Bauernhöfe bauen, und danach die <b>Reiterei</b>: Ritter sind stark und laufen 2 Provinzen weit.',
       el: '[data-tech="agri"]', on: ev => ev.kind === 'action' && ev.a.type === 'research', skip: true },
-    { title: 'Marschieren', text: 'Zum Verschieben tippst du eine Division an (mit Strg/Umschalt mehrere) und dann eine <b>grün</b> markierte eigene Provinz – oder du <b>ziehst den Marker</b> einfach dorthin. Jede Division bewegt sich einmal pro Zug.', next: 'Weiter',
+    { title: 'Marschieren', text: 'Zum Verschieben tippst du eine Figur an (mit Strg/Umschalt mehrere) und dann eine <b>grün</b> markierte eigene Provinz – am PC geht auch <b>Rechtsklick</b> aufs Ziel, oder du <b>ziehst die Figur</b> einfach dorthin. Jede Division bewegt sich einmal pro Zug.', next: 'Weiter',
       enter() { $('#research').hidden = true; } },
     { title: 'Festungen & Seewege', text: 'Mit <b>Mauerwerk</b> baust du <b>Festungen</b>: Sie verteidigen +50 % und sind weitere Orte zum Ausbilden. Nur <b>Katapulte</b> ignorieren sie. Gestrichelte Linien über das Meer sind <b>Seewege</b>.', next: 'Weiter' },
     { title: 'Bereit!', text: 'Das war\'s! <b>Ziel:</b> Vernichte alle Gegner – oder habe nach 40 Runden die meisten Punkte. Bei Fragen hilft dir oben <b>❓</b>. Viel Erfolg!', next: 'Spielen' },
@@ -1411,5 +1450,36 @@
     }, 1800);
   }
 
-  $('#btnMenu').onclick = async () => { if (await ask('Spiel verlassen und zum Hauptmenü?', 'Verlassen')) toMenu(); };
+  $('#btnMenu').onclick = () => { renderGameMenu(); $('#gameMenu').hidden = false; };
+  function renderGameMenu() {
+    $('#gmMusic').textContent = `Musik: ${Sound.music ? 'an' : 'aus'}`;
+    $('#gmSfx').textContent = `Soundeffekte: ${Sound.sfx ? 'an' : 'aus'}`;
+  }
+  $('#gameMenu').addEventListener('click', async e => {
+    const b = e.target.closest('[data-gm]');
+    if (e.target.id === 'gameMenu' || (b && b.dataset.gm === 'close')) { $('#gameMenu').hidden = true; return; }
+    if (!b) return;
+    const a = b.dataset.gm;
+    if (a === 'help') { $('#gameMenu').hidden = true; openHelp(); }
+    else if (a === 'music') { Sound.toggleMusic(); renderSoundButtons(); renderGameMenu(); }
+    else if (a === 'sfx') { Sound.toggleSfx(); renderSoundButtons(); renderGameMenu(); }
+    else if (a === 'fit') { $('#gameMenu').hidden = true; fitView(); }
+    else if (a === 'quit') { $('#gameMenu').hidden = true; if (await ask('Spiel verlassen und zum Hauptmenü?', 'Verlassen')) toMenu(); }
+  });
+
+  // ---------- Neue Version? ----------
+  // version.json liegt neben der Seite; ändert sie sich nach einem Update, bekommt jeder Spieler einen Hinweis.
+  async function checkVersion() {
+    try {
+      const r = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' });
+      if (!r.ok) return;
+      const v = (await r.json()).v;
+      if (v && v !== APP_VERSION && !S.updDismissed) $('#updateBar').hidden = false;
+    } catch { /* offline – egal */ }
+  }
+  $('#btnReload').onclick = () => location.reload();
+  $('#btnUpdLater').onclick = () => { S.updDismissed = true; $('#updateBar').hidden = true; };
+  setInterval(checkVersion, 3 * 60 * 1000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) checkVersion(); });
+  setTimeout(checkVersion, 4000);
 })();
