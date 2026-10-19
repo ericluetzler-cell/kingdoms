@@ -9,7 +9,7 @@
   const ID_PREFIX = 'kingdoms-game-';
   const BLDG_ORDER = ['lumber', 'farm', 'mine', 'library', 'caravan', 'fort'];
   const newSeed = () => (Math.random() * 2 ** 32) >>> 0;
-  const APP_VERSION = '10';
+  const APP_VERSION = '11';
 
   const S = {
     role: null,            // 'local' | 'host' | 'guest'
@@ -490,7 +490,6 @@
       if (S.state) return conn.send({ t: 'err', msg: 'Das Spiel läuft bereits.', fatal: true });
       if (d.v !== APP_VERSION) return conn.send({ t: 'err', msg: 'Ihr habt verschiedene Versionen von Kingdoms. Bitte beide die Seite neu laden (Strg+F5 bzw. am Handy neu öffnen).', fatal: true });
       if (S.lobby.length >= 6) return conn.send({ t: 'err', msg: 'Der Raum ist voll.', fatal: true });
-      if (S.kicked && S.kicked.has(String(d.name || '').toLowerCase())) return conn.send({ t: 'err', msg: 'Du wurdest aus diesem Raum entfernt.', fatal: true });
       S.conns.set(conn.peer, conn);
       S.lobby.push({ name: String(d.name || 'Gast').slice(0, 16), type: 'human', cid: conn.peer });
       return lobbyChanged();
@@ -511,8 +510,6 @@
   // Gastgeber wirft jemanden raus: in der Lobby verschwindet er, im Spiel übernimmt die KI sein Reich
   function kickPlayer(cid) {
     const c = S.conns.get(cid);
-    const lobbyP = S.lobby.find(x => x.cid === cid);
-    if (lobbyP) (S.kicked = S.kicked || new Set()).add(lobbyP.name.toLowerCase());
     if (c && c.open) c.send({ t: 'err', msg: 'Du wurdest vom Gastgeber aus dem Raum entfernt.', fatal: true });
     setTimeout(() => { try { if (c) c.close(); } catch { /* egal */ } }, 1500);
     S.conns.delete(cid);
@@ -1532,7 +1529,7 @@
       <p>Im Hauptmenü gestaltest du eigene Welten: Grundform, Größe, Landanteil, Provinzgröße, Wald, Gebirge, Wüste, Flüsse, Startgold, Rundenzahl und Friedenszeit.
         Tippe in der Vorschau auf eine Provinz, um sie umzubenennen. Gespeicherte Welten findest du bei „Welt“ im Einzelspieler und in deinem Online-Raum.</p>
       <h3>Online-Räume</h3>
-      <p>Der Gastgeber wählt Welt und Modus, kann KI-Herrscher hinzufügen und Spieler mit <b>👢 Kicken</b> entfernen – in der Lobby und im laufenden Spiel (dann übernimmt die KI das Reich).</p>
+      <p>Der Gastgeber wählt Welt und Modus, kann KI-Herrscher hinzufügen und Spieler mit <b>👢 Kicken</b> entfernen (sie können danach wieder beitreten) – in der Lobby und im laufenden Spiel (dann übernimmt die KI das Reich).</p>
       <h3>Bündnisse</h3>
       <p>Verbündete können sich nicht angreifen – bis einer das Bündnis bricht. Alle sehen den Verrat. 🗡️</p>
     </div>`;
