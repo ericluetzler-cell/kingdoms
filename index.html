@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Kingdoms</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Alegreya+Sans:wght@400;500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css?v=6">
+</head>
+<body>
+
+<!-- Symbole: Städte, Gebäude, Einheiten, Wappen -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <filter id="f-soft" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="1.2" stdDeviation="1.1" flood-color="#000" flood-opacity=".55"/>
+    </filter>
+    <marker id="arrowhead" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 Z" fill="context-stroke"/>
+    </marker>
+    <symbol id="crest" viewBox="0 0 64 72">
+      <path d="M32 2 L60 10 V34 C60 52 47 64 32 70 C17 64 4 52 4 34 V10 Z" fill="url(#gold-g)" stroke="#5a3e10" stroke-width="2"/>
+      <path d="M32 8 L54 14.5 V34 C54 48.5 44 58 32 63.5 C20 58 10 48.5 10 34 V14.5 Z" fill="#1d2433"/>
+      <path d="M18 40 L22 24 L28 32 L32 20 L36 32 L42 24 L46 40 Z" fill="url(#gold-g)" stroke="#5a3e10" stroke-width="1.2" stroke-linejoin="round"/>
+      <rect x="18" y="41.5" width="28" height="4" rx="1" fill="url(#gold-g)"/>
+      <circle cx="22" cy="23" r="2" fill="#e5484d"/><circle cx="32" cy="19" r="2.3" fill="#3e8ef7"/><circle cx="42" cy="23" r="2" fill="#30a46c"/>
+    </symbol>
+    <linearGradient id="gold-g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe7a3"/><stop offset=".5" stop-color="#e8b64c"/><stop offset="1" stop-color="#a8741a"/></linearGradient>
+    <symbol id="castle" viewBox="0 0 40 34">
+      <path d="M20 0.5 V9" stroke="#3b3326" stroke-width="1.4"/>
+      <path d="M20.6 0.8 L30 3.4 L20.6 6 Z" fill="currentColor" stroke="#2b241a" stroke-width=".6"/>
+      <g stroke="#4a443a" stroke-width=".9" stroke-linejoin="round">
+        <rect x="6" y="20" width="28" height="12" fill="#b4ac9b"/>
+        <path d="M2 12 h2 v2 h2 v-2 h2 v2 h2 V32 H2 Z" fill="#d2cbbb"/>
+        <path d="M30 12 h2 v2 h2 v-2 h2 v2 h2 V32 H30 Z" fill="#d2cbbb"/>
+        <path d="M13 8 h3 v2 h2 v-2 h4 v2 h2 v-2 h3 V32 H13 Z" fill="#e1dbcc"/>
+        <path d="M17 32 V25.5 a3 3 0 0 1 6 0 V32 Z" fill="#3b2f22"/>
+      </g>
+      <rect x="18.8" y="14" width="2.4" height="4" rx="1.2" fill="#3b2f22"/>
+    </symbol>
+    <symbol id="crown" viewBox="0 0 16 10">
+      <path d="M1 9 L0 1.5 L4.5 5 L8 0 L11.5 5 L16 1.5 L15 9 Z" fill="#f5c542" stroke="#8a6512" stroke-width=".8" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="b-farm" viewBox="0 0 24 24">
+      <path d="M2 16 L12 11 L22 16 L12 21 Z" fill="#dcb64c" stroke="#7a5c12" stroke-width="1"/>
+      <path d="M5 17.5 L15 12.5 M8 19 L18 14 M11 20.5 L20 16" stroke="#a07f25" stroke-width="1"/>
+      <path d="M3 11 L7.5 6.5 L12 11 V15 H3 Z" fill="#b8402f" stroke="#5a1d16" stroke-width="1"/>
+      <rect x="6" y="11.5" width="3" height="3.5" fill="#5a1d16"/>
+    </symbol>
+    <symbol id="b-lumber" viewBox="0 0 24 24">
+      <rect x="3" y="12" width="15" height="4.6" rx="2.3" fill="#8b5a2b" stroke="#4a2e14"/>
+      <rect x="5" y="16.8" width="15" height="4.6" rx="2.3" fill="#8b5a2b" stroke="#4a2e14"/>
+      <circle cx="17.7" cy="14.3" r="2.3" fill="#e2ad73" stroke="#4a2e14"/>
+      <circle cx="19.7" cy="19.1" r="2.3" fill="#e2ad73" stroke="#4a2e14"/>
+      <path d="M7 3 L12.5 10" stroke="#5a3d22" stroke-width="1.8" stroke-linecap="round"/>
+      <path d="M4.5 2.5 L9 1.5 L8.6 6.4 Z" fill="#d6dbe0" stroke="#555" stroke-width=".8"/>
+    </symbol>
+    <symbol id="b-mine" viewBox="0 0 24 24">
+      <path d="M2.5 22 V14 a9.5 9.5 0 0 1 19 0 V22 Z" fill="#776d5f" stroke="#3a332a" stroke-width="1"/>
+      <path d="M8 22 V16 a4 4 0 0 1 8 0 V22 Z" fill="#1f1a14"/>
+      <path d="M8 22 V16 M16 22 V16" stroke="#8b5a2b" stroke-width="1.6"/>
+      <path d="M8 16 a4 4 0 0 1 8 0" fill="none" stroke="#8b5a2b" stroke-width="1.6"/>
+      <circle cx="12" cy="20.5" r="1.6" fill="#f2c53d"/>
+    </symbol>
+    <symbol id="b-library" viewBox="0 0 24 24">
+      <path d="M2.5 6 Q7.5 3.6 12 6 Q16.5 3.6 21.5 6 V20 Q16.5 17.6 12 20 Q7.5 17.6 2.5 20 Z" fill="#f4ecd8" stroke="#5b4630" stroke-width="1.2"/>
+      <path d="M12 6 V20" stroke="#5b4630" stroke-width="1.2"/>
+      <path d="M5 9.5 Q7.5 8.5 10 9.5 M5 12.5 Q7.5 11.5 10 12.5 M14 9.5 Q16.5 8.5 19 9.5 M14 12.5 Q16.5 11.5 19 12.5" stroke="#9b8a6c" fill="none"/>
+      <path d="M2.5 20 Q7.5 17.6 12 20 Q16.5 17.6 21.5 20 V21.5 H2.5 Z" fill="#8a3b2a"/>
+    </symbol>
+    <symbol id="b-caravan" viewBox="0 0 24 24">
+      <path d="M1.5 21 L12 5 L22.5 21 Z" fill="#ead6a4" stroke="#7a5c2e" stroke-width="1"/>
+      <path d="M12 5 L9.5 21 H14.5 Z" fill="#7a4b2a"/>
+      <path d="M12 5 V1.5 L16 3 L12 4.5" fill="#c0392b" stroke="#5a1d16" stroke-width=".6"/>
+    </symbol>
+    <symbol id="hut" viewBox="0 0 24 24">
+      <path d="M2.5 12.5 L12 4 L21.5 12.5 Z" fill="#d1ab55" stroke="#6b4f1d" stroke-width="1"/>
+      <rect x="5" y="12.5" width="14" height="8.5" fill="#a87d4d" stroke="#5a3d22" stroke-width="1"/>
+      <rect x="10" y="15.5" width="4" height="5.5" fill="#3b2a1a"/>
+    </symbol>
+
+    <!-- Einheiten -->
+    <symbol id="u-w" viewBox="0 0 24 24">
+      <path d="M12 1.5 L14.2 4 V14.5 H9.8 V4 Z" fill="currentColor"/>
+      <rect x="6.5" y="14.5" width="11" height="2.4" rx="1" fill="currentColor"/>
+      <rect x="10.8" y="16.9" width="2.4" height="4.2" fill="currentColor"/>
+      <circle cx="12" cy="22.2" r="1.6" fill="currentColor"/>
+    </symbol>
+    <symbol id="u-a" viewBox="0 0 24 24">
+      <path d="M7 2 C18.5 6 18.5 18 7 22" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>
+      <path d="M7 2 V22" stroke="currentColor" stroke-width="1"/>
+      <path d="M2.5 12 H18.5" stroke="currentColor" stroke-width="1.8"/>
+      <path d="M23 12 L17.5 8.8 V15.2 Z" fill="currentColor"/>
+      <path d="M2.5 12 L1 9.5 M2.5 12 L1 14.5" stroke="currentColor" stroke-width="1.4"/>
+    </symbol>
+    <symbol id="u-p" viewBox="0 0 24 24">
+      <path d="M16 1 L19 6.5 H17 V23 H15 V6.5 H13 Z" fill="currentColor"/>
+      <path d="M3.5 9 Q8.5 7 13 9 V15 Q13 20 8.25 22.5 Q3.5 20 3.5 15 Z" fill="currentColor"/>
+    </symbol>
+    <symbol id="u-k" viewBox="0 0 24 24">
+      <path d="M6.5 22.5 H19.5 V20.5 C19.5 17.5 18 15.8 17 13.2 C19 10 18.4 5.2 13.8 3.6 L12.8 1.5 L11.2 3.9 C8.2 5.1 6.2 8 5.6 11 L5 13.2 C5 14.3 6.1 14.9 7.2 14.3 L10.6 12.4 C10.9 14.3 9 16.6 6.5 19 Z" fill="currentColor"/>
+    </symbol>
+    <symbol id="u-c" viewBox="0 0 24 24">
+      <rect x="3" y="15" width="17" height="3" rx="1" fill="currentColor"/>
+      <circle cx="6.5" cy="20" r="2.6" fill="currentColor"/>
+      <circle cx="16.5" cy="20" r="2.6" fill="currentColor"/>
+      <path d="M9 15.5 L19.5 4.5" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"/>
+      <circle cx="19.8" cy="4" r="2.8" fill="currentColor"/>
+      <path d="M8 15 L11 9 L14 15" fill="none" stroke="currentColor" stroke-width="1.7"/>
+    </symbol>
+  </defs>
+</svg>
+
+<!-- ===== Titelbildschirm ===== -->
+<section id="menu" class="screen title-screen">
+  <div class="title-bg" id="titleBg"></div>
+  <div class="title-shade"></div>
+  <div class="title-wrap">
+    <header class="logo">
+      <svg class="crest"><use href="#crest"/></svg>
+      <h1>Kingdoms</h1>
+      <p>Erobere Provinzen · Erforsche Wissen · Herrsche über das Land</p>
+    </header>
+
+    <div class="menu-main panel" id="menuMain">
+      <label class="field">Dein Name
+        <input id="name" maxlength="16" placeholder="z. B. König Eric" autocomplete="nickname">
+      </label>
+      <button class="menu-btn featured" data-go="tutorial">
+        <span class="mb-ico">🎓</span><span><b>Tutorial</b><small>Neu hier? Lerne das Spiel in 5 Minuten.</small></span>
+      </button>
+      <button class="menu-btn" data-go="solo">
+        <span class="mb-ico">⚔️</span><span><b>Einzelspieler</b><small>Gegen 1–5 KI-Herrscher auf einer Welt deiner Wahl.</small></span>
+      </button>
+      <button class="menu-btn" data-go="multi">
+        <span class="mb-ico">👥</span><span><b>Mit Freunden</b><small>Online-Raum erstellen oder beitreten.</small></span>
+      </button>
+      <button class="menu-btn subtle" data-go="help"><span class="mb-ico">📖</span><span><b>Spielanleitung</b></span></button>
+    </div>
+
+    <!-- Einzelspieler einrichten -->
+    <div class="panel setup" id="panelSolo" hidden>
+      <div class="phead"><button class="back" data-go="main">← Zurück</button><h2>Einzelspieler</h2></div>
+      <div class="setup-grid">
+        <div class="setup-opts">
+          <div class="opt"><span class="olabel">Gegner</span><div class="seg" id="soloBots"></div></div>
+          <div class="opt"><span class="olabel">Schwierigkeit</span><div class="seg" id="soloLevel"></div></div>
+          <div class="opt"><span class="olabel">Welt</span><div class="maps" id="soloMaps"></div></div>
+          <div class="opt"><span class="olabel">Größe</span><div class="seg" id="soloSize"></div></div>
+        </div>
+        <div class="preview">
+          <div class="pv-frame"><canvas id="soloPreview"></canvas><div class="pv-loading" id="soloPvLoad">Welt wird erschaffen…</div></div>
+          <div class="pv-info"><div><b id="soloPvName"></b><small id="soloPvStats"></small></div><button id="soloReroll">🎲 Neue Welt</button></div>
+          <p class="pv-desc" id="soloPvDesc"></p>
+        </div>
+      </div>
+      <div class="pfoot"><button id="btnLocal" class="primary big">⚔️ Spiel starten</button></div>
+    </div>
+
+    <!-- Mehrspieler -->
+    <div class="panel" id="panelMulti" hidden>
+      <div class="phead"><button class="back" data-go="main">← Zurück</button><h2>Mit Freunden</h2></div>
+      <div class="multi-grid">
+        <div class="mcard">
+          <h3>Raum erstellen</h3>
+          <p>Du bist Gastgeber: Du wählst die Welt und schickst deinen Freunden den Code.</p>
+          <button id="btnHost" class="primary">Raum erstellen</button>
+        </div>
+        <div class="mcard">
+          <h3>Raum beitreten</h3>
+          <p>Gib den Code ein, den du bekommen hast.</p>
+          <div class="row join"><input id="joinCode" maxlength="5" placeholder="CODE" autocomplete="off"><button id="btnJoin" class="primary">Beitreten</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Lobby ===== -->
+<section id="lobby" class="screen title-screen" hidden>
+  <div class="title-bg"></div>
+  <div class="title-shade"></div>
+  <div class="title-wrap">
+    <div class="panel setup">
+      <div class="phead"><button class="back" id="btnLeave">← Verlassen</button><h2>Raum <span id="roomCode" class="code">…</span></h2></div>
+      <div class="setup-grid">
+        <div class="setup-opts">
+          <p class="hint" id="lobbyHint"></p>
+          <div class="row" id="shareRow"><input id="shareLink" readonly><button id="btnCopy">Link kopieren</button></div>
+          <span class="olabel">Spieler</span>
+          <ul id="lobbyList" class="lobby-list"></ul>
+          <div class="row" id="botRow">
+            <div class="seg" id="lobbyBotLevel"></div>
+            <button id="btnAddBot">+ KI</button>
+          </div>
+          <div id="lobbyMapOpts">
+            <div class="opt"><span class="olabel">Welt</span><div class="maps" id="lobbyMaps"></div></div>
+            <div class="opt"><span class="olabel">Größe</span><div class="seg" id="lobbySize"></div></div>
+          </div>
+        </div>
+        <div class="preview">
+          <div class="pv-frame"><canvas id="lobbyPreview"></canvas><div class="pv-loading" id="lobbyPvLoad">Welt wird erschaffen…</div></div>
+          <div class="pv-info"><div><b id="lobbyPvName"></b><small id="lobbyPvStats"></small></div><button id="lobbyReroll">🎲 Neue Welt</button></div>
+          <p class="pv-desc" id="lobbyPvDesc"></p>
+        </div>
+      </div>
+      <div class="pfoot"><button id="btnStart" class="primary big">⚔️ Spiel starten</button></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Spiel ===== -->
+<section id="game" class="screen" hidden>
+  <div class="mapwrap" id="mapwrap">
+    <svg id="map">
+      <image id="terrainImg" x="0" y="0" preserveAspectRatio="none"/>
+      <g id="routes"></g>
+      <g id="provs"></g>
+      <g id="nations"></g>
+      <g id="labels"></g>
+      <g id="units"></g>
+      <g id="drag"></g>
+      <g id="fx"></g>
+    </svg>
+  </div>
+
+  <!-- HUD oben -->
+  <header class="hud-top">
+    <div class="turnplate glass" id="turnPlate"></div>
+    <div class="res glass" id="res"></div>
+    <div class="hud-btns">
+      <button id="btnResearch" class="glass hbtn">🔬 <span>Forschung</span></button>
+      <button id="btnSide" class="glass hbtn">👑 <span>Reiche</span></button>
+      <button id="btnMusic" class="glass hbtn snd" title="Musik an/aus">🎵</button>
+      <button id="btnSfx" class="glass hbtn snd" title="Soundeffekte an/aus">🔊</button>
+      <button id="btnHelp" class="glass hbtn" title="Spielanleitung (H)">❓</button>
+      <button id="btnMenu" class="glass hbtn" title="Hauptmenü">☰</button>
+    </div>
+  </header>
+
+  <div id="info" class="info glass" hidden></div>
+  <div id="banner" class="banner" hidden></div>
+  <div id="turnSplash" class="turn-splash" hidden></div>
+  <div class="zoom glass">
+    <button data-zoom="in" title="Hineinzoomen">+</button>
+    <button data-zoom="out" title="Herauszoomen">−</button>
+    <button data-zoom="fit" title="Ganze Karte">⤢</button>
+  </div>
+
+  <!-- Seitenleiste: Reiche, Chronik, Chat -->
+  <aside class="side glass" id="side">
+    <div id="proposals"></div>
+    <h3>Reiche</h3>
+    <ul id="players" class="players"></ul>
+    <div id="chatBox">
+      <h3>Chat</h3>
+      <div id="chat" class="chat"></div>
+      <div class="emotes">
+        <button data-e="👍">👍</button><button data-e="😂">😂</button><button data-e="😡">😡</button>
+        <button data-e="🤝">🤝</button><button data-e="⚔️">⚔️</button><button data-e="😱">😱</button>
+      </div>
+      <form id="chatForm" class="row"><input id="chatIn" maxlength="200" placeholder="Nachricht…"><button>➤</button></form>
+    </div>
+    <h3>Chronik</h3>
+    <ul id="log" class="log"></ul>
+  </aside>
+
+  <!-- Aktionsleiste unten -->
+  <div class="dock glass" id="actionbar"></div>
+  <div id="coach" class="coach" hidden></div>
+  <div id="overlay" class="overlay" hidden></div>
+</section>
+
+<!-- Forschung und Hilfe (Fenster) -->
+<div id="research" class="overlay" hidden></div>
+<div id="help" class="overlay" hidden></div>
+<div id="confirm" class="overlay" hidden></div>
+<div id="planner" class="overlay" hidden></div>
+<div class="sound-toggles" id="menuSound">
+  <button id="mMusic" class="glass hbtn" title="Musik an/aus">🎵 Musik</button>
+  <button id="mSfx" class="glass hbtn" title="Soundeffekte an/aus">🔊 Effekte</button>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="audio.js?v=5"></script>
+<script src="game.js?v=7"></script>
+<script src="mapview.js?v=5"></script>
+<script src="app.js?v=7"></script>
+</body>
+</html>
