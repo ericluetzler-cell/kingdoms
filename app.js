@@ -9,12 +9,12 @@
   const ID_PREFIX = 'kingdoms-game-';
   const BLDG_ORDER = ['lumber', 'farm', 'mine', 'library', 'caravan', 'fort'];
   const newSeed = () => (Math.random() * 2 ** 32) >>> 0;
-  const APP_VERSION = '8';
+  const APP_VERSION = '10';
 
   const S = {
     role: null,            // 'local' | 'host' | 'guest'
     me: 0, state: null, geo: null, lobby: [], code: '',
-    settings: { map: 'continent', size: 'medium', seed: newSeed() },
+    settings: { map: 'continent', size: 'medium', seed: newSeed(), mode: 'classic', world: null },
     solo: { bots: 2, level: 'medium' },
     peer: null, conns: new Map(), conn: null,
     sel: -1, selPref: null, target: -1, mode: 'recruit', unit: 'w', bldg: 'lumber', amount: 1, turnKey: '',
@@ -55,6 +55,13 @@
     });
   }
 
+  function notice(text) {
+    const o = $('#confirm');
+    o.innerHTML = `<div class="modal center"><p>${esc(text)}</p><div class="row"><button data-a="1" class="primary">OK</button></div></div>`;
+    o.hidden = false;
+    o.onclick = e => { if (e.target === o || e.target.closest('[data-a]')) o.hidden = true; };
+  }
+
   const myName = () => ($('#name').value.trim() || 'Spieler').slice(0, 16);
 
   function botEntry(level, list = S.lobby) {
@@ -78,7 +85,9 @@
     $('#menuMain').hidden = name !== 'main';
     $('#panelSolo').hidden = name !== 'solo';
     $('#panelMulti').hidden = name !== 'multi';
+    $('#panelForge').hidden = name !== 'forge';
     if (name === 'solo') soloSetup.refresh();
+    if (name === 'forge') forge.open();
   }
 
   document.addEventListener('click', e => {
@@ -89,6 +98,26 @@
     else if (go === 'help') openHelp();
     else menuPanel(go);
   });
+
+  // ---------- Eigene Welten (Weltenschmiede) ----------
+
+  const worldsStore = {
+    list() { try { return JSON.parse(store.get('kingdoms-worlds') || '[]'); } catch { return []; } },
+    save(list) { store.set('kingdoms-worlds', JSON.stringify(list)); },
+  };
+  const worldCustom = w => ({ land: w.land, provSize: w.provSize, forest: w.forest, mountain: w.mountain, desert: w.desert, rivers: w.rivers, peaks: w.peaks, fixedSize: true });
+  // Einstellungen (Karte oder eigene Welt + Modus) in Optionen für K.createGame übersetzen
+  function gameOpts(set) {
+    const mode = set.mode || 'classic', w = set.world;
+    if (!w) return { map: set.map, size: set.size, seed: set.seed, mode };
+    return { map: w.type, size: w.size, seed: w.seed, mode, custom: worldCustom(w), names: w.names, rounds: w.rounds, gold: w.gold, truce: w.truce, worldName: w.name };
+  }
+  function previewWorld(set, n) {
+    const o = gameOpts(set);
+    const r = K.generateWorld(n, o.map, o.size, o.seed, o.custom);
+    if (o.names) for (const [k, v] of Object.entries(o.names)) if (r.cells[+k] && v) r.cells[+k].name = v;
+    return r;
+  }
 
   // ---------- Spiel einrichten: Weltwahl mit Vorschau ----------
 
@@ -103,23 +132,32 @@
       refresh() {
         const st = S.settings;
         const can = editable();
-        const maps = [...Object.entries(K.MAPS).map(([k, m]) => [k, `<span>${m.icon}</span>${m.name}`]), ['random', '<span>🎲</span>Zufall']];
-        seg($(`#${p}Maps`), maps, st.map, v => { S.settings = { ...st, map: v, seed: newSeed() }; changed(); }, can);
-        seg($(`#${p}Size`), Object.entries(K.SIZES).map(([k, s]) => [k, s.name]), st.size, v => { S.settings = { ...st, size: v }; changed(); }, can);
-        $(`#${p}Reroll`).hidden = !can;
+        const saved = worldsStore.list();
+        if (st.world && !saved.some(w => w.id === st.world.id)) saved.push(st.world);
+        const maps = [...Object.entries(K.MAPS).map(([k, m]) => [k, `<span>${m.icon}</span>${m.name}`]), ['random', '<span>🎲</span>Zufall'],
+          ...saved.map(w => ['w:' + w.id, `<span>🛠️</span>${esc(w.name)}`])];
+        seg($(`#${p}Maps`), maps, st.world ? 'w:' + st.world.id : st.map, v => {
+          if (v.startsWith('w:')) S.settings = { ...st, world: saved.find(w => 'w:' + w.id === v) || null };
+          else S.settings = { ...st, map: v, world: null, seed: newSeed() };
+          changed();
+        }, can);
+        seg($(`#${p}Mode`), Object.entries(K.MODES).map(([k, m]) => [k, `${m.icon} ${m.name}`]), st.mode || 'classic', v => { S.settings = { ...st, mode: v }; changed(); }, can);
+        seg($(`#${p}Size`), Object.entries(K.SIZES).filter(([k]) => k !== 'huge').map(([k, s]) => [k, s.name]), st.world ? '' : st.size, v => { S.settings = { ...st, size: v }; changed(); }, can && !st.world);
+        $(`#${p}Reroll`).hidden = !can || !!st.world;
         $(`#${p}Reroll`).onclick = () => { S.settings = { ...S.settings, seed: newSeed() }; changed(); };
         clearTimeout(pvTimer);
         $(`#${p}PvLoad`).hidden = false;
         pvTimer = setTimeout(() => {
-          const w = K.generateWorld(Math.max(2, getPlayers()), st.map, st.size, st.seed);
+          const w = previewWorld(st, Math.max(2, getPlayers()));
           const src = MapView.preview(w.geo, 760), cv = $(`#${p}Preview`);
           cv.width = src.width; cv.height = src.height;
           cv.getContext('2d').drawImage(src, 0, 0);
           $(`#${p}PvLoad`).hidden = true;
           const m = K.MAPS[w.geo.type];
-          $(`#${p}PvName`).textContent = `${m.icon} ${m.name}${st.map === 'random' ? ' (Zufall)' : ''}`;
-          $(`#${p}PvStats`).textContent = `${w.cells.length} Provinzen · ${getPlayers()} Herrscher`;
-          $(`#${p}PvDesc`).textContent = m.desc;
+          const md = K.MODES[st.mode || 'classic'];
+          $(`#${p}PvName`).textContent = st.world ? `🛠️ ${st.world.name}` : `${m.icon} ${m.name}${st.map === 'random' ? ' (Zufall)' : ''}`;
+          $(`#${p}PvStats`).textContent = `${w.cells.length} Provinzen · ${getPlayers()} Herrscher · ${md.icon} ${md.name}`;
+          $(`#${p}PvDesc`).textContent = `${st.world ? `Eigene Welt (${m.name}, ${K.SIZES[st.world.size].name}).` : m.desc} – ${md.desc}`;
         }, 30);
       },
     };
@@ -149,7 +187,7 @@
   function startTutorial() {
     resetSession();
     S.role = 'local';
-    S.settings = { map: 'continent', size: 'small', seed: newSeed() };
+    S.settings = { map: 'continent', size: 'small', seed: newSeed(), mode: 'classic', world: null };
     S.lobby = [{ name: myName(), type: 'human', cid: 'host' }, { name: 'Graf Bruno', type: 'ai', level: 'easy' }];
     startGame({ truce: 6 });
     S.tut = { step: 0, recruited: 0 };
@@ -192,6 +230,167 @@
 
   function toMenu() { resetSession(); show('menu'); menuPanel('main'); }
 
+  // ---------- Weltenschmiede: eigene Welten gestalten ----------
+
+  const forge = (() => {
+    const DEF = () => ({
+      id: 'w' + Date.now().toString(36), name: 'Meine Welt', type: 'continent', size: 'medium', seed: newSeed(),
+      land: 0.55, provSize: 17, forest: 0.34, mountain: 0.14, desert: 0.14, rivers: 6, peaks: true,
+      names: {}, rounds: 40, gold: 4, truce: 0,
+    });
+    let F = DEF(), world = null, pvTimer, renaming = -1;
+    // Regler: [Schlüssel, Beschriftung, min, max, Schritt, Anzeige, verändert die Provinzaufteilung?]
+    const SLIDERS = [
+      ['land', 'Landanteil', 0.25, 0.75, 0.01, v => Math.round(v * 100) + ' %', true],
+      ['provSize', 'Provinzgröße', 9, 32, 1, v => (v < 14 ? 'viele kleine' : v > 23 ? 'wenige große' : 'mittel') + ` (${v})`, true],
+      ['forest', 'Wald', 0, 0.7, 0.01, v => Math.round(v * 100) + ' %', false],
+      ['mountain', 'Gebirge', 0, 0.5, 0.01, v => Math.round(v * 100) + ' %', true],
+      ['desert', 'Wüste', 0, 0.7, 0.01, v => Math.round(v * 100) + ' %', false],
+      ['rivers', 'Flüsse', 0, 16, 1, v => v, false],
+    ];
+    const RULES = [
+      ['gold', 'Startgold', 0, 30, 1, v => v],
+      ['rounds', 'Rundenzahl', 15, 80, 5, v => v],
+      ['truce', 'Friedenszeit (Runden)', 0, 10, 1, v => v || 'keine'],
+    ];
+
+    function slider([k, label, min, max, step, fmt]) {
+      return `<label class="slider"><span>${label}<b id="fv-${k}">${fmt(F[k])}</b></span>
+        <input type="range" id="fs-${k}" data-k="${k}" min="${min}" max="${max}" step="${step}" value="${F[k]}"></label>`;
+    }
+
+    function renderOpts() {
+      const maps = Object.entries(K.MAPS).map(([k, m]) => `<button data-ft="${k}" class="${F.type === k ? 'on' : ''}"><span>${m.icon}</span>${m.name}</button>`).join('');
+      const sizes = Object.entries(K.SIZES).map(([k, z]) => `<button data-fz="${k}" class="${F.size === k ? 'on' : ''}">${z.name}</button>`).join('');
+      $('#forgeOpts').innerHTML = `
+        <label class="field">Name der Welt <input id="forgeName" maxlength="28" value="${esc(F.name)}"></label>
+        <div class="opt"><span class="olabel">Grundform</span><div class="maps">${maps}</div></div>
+        <div class="opt"><span class="olabel">Größe</span><div class="seg">${sizes}</div></div>
+        <div class="opt"><span class="olabel">Landschaft</span>${SLIDERS.map(slider).join('')}
+          <label class="check"><input type="checkbox" id="forgePeaks" ${F.peaks ? 'checked' : ''}> Unpassierbare Gipfel</label></div>
+        <div class="opt"><span class="olabel">Spielregeln</span>${RULES.map(slider).join('')}</div>`;
+    }
+
+    function renderSaved() {
+      const list = worldsStore.list();
+      $('#forgeSaved').innerHTML = list.length ? `<span class="olabel">Gespeicherte Welten</span>` + list.map(w => `
+        <div class="srow ${w.id === F.id ? 'on' : ''}"><span>🛠️ <b>${esc(w.name)}</b> <small class="tag">${K.MAPS[w.type].name} · ${K.SIZES[w.size].name}</small></span>
+          <button data-wl="${w.id}">Laden</button><button data-wd="${w.id}" title="Löschen">🗑️</button></div>`).join('') : '';
+    }
+
+    function drawPreview() {
+      clearTimeout(pvTimer);
+      $('#forgePvLoad').hidden = false;
+      pvTimer = setTimeout(() => {
+        world = K.generateWorld(2, F.type, F.size, F.seed, worldCustom(F));
+        for (const [k, v] of Object.entries(F.names)) if (world.cells[+k]) world.cells[+k].name = v;
+        const width = 1100, src = MapView.preview(world.geo, width), cv = $('#forgePreview');
+        cv.width = src.width; cv.height = src.height;
+        const g = cv.getContext('2d');
+        g.drawImage(src, 0, 0);
+        // Provinznamen auf die Vorschau schreiben
+        const sc = width / world.geo.W;
+        g.textAlign = 'center'; g.lineJoin = 'round';
+        world.cells.forEach((c, i) => {
+          const custom = F.names[i] !== undefined;
+          g.font = `700 ${Math.max(10, 7.5 * sc)}px Cinzel, Georgia, serif`;
+          g.strokeStyle = 'rgba(20,14,6,.85)'; g.lineWidth = 3;
+          g.fillStyle = i === renaming ? '#ffe2a0' : custom ? '#ffd27a' : '#fff8e6';
+          g.strokeText(c.name, c.lx * sc, c.ly * sc);
+          g.fillText(c.name, c.lx * sc, c.ly * sc);
+        });
+        $('#forgePvLoad').hidden = true;
+        const nTerr = { plain: 0, forest: 0, mountain: 0, desert: 0 };
+        world.cells.forEach(c => nTerr[c.terrain]++);
+        $('#forgePvName').textContent = `🛠️ ${F.name || 'Ohne Namen'}`;
+        $('#forgePvStats').textContent = `${world.cells.length} Provinzen · ${nTerr.forest} Wald · ${nTerr.mountain} Gebirge · ${nTerr.desert} Wüste · für bis zu ${Math.min(6, Math.floor(world.cells.length / 4))} Herrscher`;
+      }, 120);
+    }
+
+    // Klick in die Vorschau → Provinz finden → umbenennen
+    $('#forgePreview').addEventListener('click', e => {
+      if (!world) return;
+      const r = e.target.getBoundingClientRect();
+      const wx = (e.clientX - r.left) / r.width * world.geo.W, wy = (e.clientY - r.top) / r.height * world.geo.H;
+      let best = -1, bd = Infinity;
+      for (let i = 0; i < world.geo.prov.length; i++) {
+        if (world.geo.prov[i] < 0) continue;
+        const [x, y] = K.hexXY(world.geo, i), d = (x - wx) ** 2 + (y - wy) ** 2;
+        if (d < bd) { bd = d; best = i; }
+      }
+      if (best < 0 || bd > (world.geo.s * 1.5) ** 2) return;
+      renaming = world.geo.prov[best];
+      const c = world.cells[renaming];
+      $('#forgeRename').innerHTML = `<span class="olabel">Provinz umbenennen</span><div class="row">
+        <input id="renameIn" maxlength="24" value="${esc(c.name)}"><button id="renameOk" class="primary">OK</button>
+        ${F.names[renaming] !== undefined ? '<button id="renameReset" title="Ursprünglichen Namen verwenden">↺</button>' : ''}</div>`;
+      $('#forgeRename').hidden = false;
+      $('#renameIn').focus(); $('#renameIn').select();
+      drawPreview();
+    });
+    $('#forgeRename').addEventListener('click', e => {
+      if (e.target.id === 'renameOk') {
+        const v = $('#renameIn').value.trim();
+        if (v) F.names[renaming] = v.slice(0, 24);
+        renaming = -1; $('#forgeRename').hidden = true; drawPreview();
+      } else if (e.target.id === 'renameReset') { delete F.names[renaming]; renaming = -1; $('#forgeRename').hidden = true; drawPreview(); }
+    });
+    $('#forgeRename').addEventListener('keydown', e => { if (e.key === 'Enter') $('#renameOk').click(); });
+
+    // Ändert sich die Provinzaufteilung, passen eigene Namen nicht mehr – dann zurücksetzen
+    function structural() {
+      if (Object.keys(F.names).length) { F.names = {}; toast('Eigene Provinznamen wurden zurückgesetzt, weil sich die Provinzen geändert haben.'); }
+      renaming = -1; $('#forgeRename').hidden = true;
+    }
+
+    $('#forgeOpts').addEventListener('input', e => {
+      const t = e.target;
+      if (t.id === 'forgeName') { F.name = t.value.trim().slice(0, 28) || 'Meine Welt'; $('#forgePvName').textContent = `🛠️ ${F.name}`; return; }
+      if (!t.dataset.k) return;
+      const k = t.dataset.k, def = [...SLIDERS, ...RULES].find(x => x[0] === k);
+      F[k] = +t.value;
+      $(`#fv-${k}`).textContent = def[5](F[k]);
+      if (def[6]) structural();
+      if (SLIDERS.some(x => x[0] === k)) drawPreview();
+    });
+    $('#forgeOpts').addEventListener('change', e => { if (e.target.id === 'forgePeaks') { F.peaks = e.target.checked; structural(); drawPreview(); } });
+    $('#forgeOpts').addEventListener('click', e => {
+      const b = e.target.closest('button');
+      if (!b) return;
+      if (b.dataset.ft) { F.type = b.dataset.ft; structural(); }
+      else if (b.dataset.fz) { F.size = b.dataset.fz; structural(); }
+      else return;
+      renderOpts(); drawPreview();
+    });
+    $('#forgeReroll').onclick = () => { F.seed = newSeed(); structural(); drawPreview(); };
+    $('#forgeSaved').addEventListener('click', async e => {
+      const b = e.target.closest('button');
+      if (!b) return;
+      const list = worldsStore.list();
+      if (b.dataset.wl) { F = { ...DEF(), ...list.find(w => w.id === b.dataset.wl) }; renderOpts(); renderSaved(); drawPreview(); }
+      else if (b.dataset.wd) {
+        const w = list.find(x => x.id === b.dataset.wd);
+        if (w && await ask(`Welt „${esc(w.name)}“ löschen?`, '🗑️ Löschen')) { worldsStore.save(list.filter(x => x.id !== w.id)); if (F.id === w.id) F = DEF(); renderOpts(); renderSaved(); drawPreview(); }
+      }
+    });
+    function save() {
+      const list = worldsStore.list().filter(w => w.id !== F.id);
+      list.unshift(JSON.parse(JSON.stringify(F)));
+      worldsStore.save(list.slice(0, 20));
+      renderSaved();
+      toast(`Welt „${F.name}“ gespeichert.`);
+      Sound.play('build');
+    }
+    $('#forgeSave').onclick = save;
+    $('#forgePlay').onclick = () => {
+      save();
+      S.settings = { ...S.settings, world: JSON.parse(JSON.stringify(F)) };
+      menuPanel('solo');
+    };
+
+    return { open() { renderOpts(); renderSaved(); drawPreview(); } };
+  })();
+
   // ---------- Lobby ----------
 
   const lobbySetup = makeSetup('lobby', () => S.lobby.length, () => S.role === 'host');
@@ -212,11 +411,14 @@
         <span class="grow">${esc(p.name)} ${p.cid === 'host' ? '<span class="tag">👑 Gastgeber</span>' : ''}
           ${p.type === 'ai' ? `<span class="tag">🤖 KI ${LEVELS[p.level]}</span>` : ''}</span>
         ${host && p.type === 'ai' ? `<button data-rm="${i}" title="Entfernen">✕</button>` : ''}
+        ${host && p.type === 'human' && p.cid !== 'host' ? `<button data-kick="${esc(p.cid)}" class="kick" title="Aus dem Raum werfen">👢 Kicken</button>` : ''}
       </li>`).join('');
     lobbySetup.refresh();
   }
 
-  $('#lobbyList').onclick = e => {
+  $('#lobbyList').onclick = async e => {
+    const k = e.target.closest('[data-kick]');
+    if (k) { const p = S.lobby.find(x => x.cid === k.dataset.kick); if (p && await ask(`${esc(p.name)} aus dem Raum werfen?`, '👢 Kicken')) kickPlayer(p.cid); return; }
     const b = e.target.closest('[data-rm]');
     if (!b) return;
     S.lobby.splice(+b.dataset.rm, 1);
@@ -288,6 +490,7 @@
       if (S.state) return conn.send({ t: 'err', msg: 'Das Spiel läuft bereits.', fatal: true });
       if (d.v !== APP_VERSION) return conn.send({ t: 'err', msg: 'Ihr habt verschiedene Versionen von Kingdoms. Bitte beide die Seite neu laden (Strg+F5 bzw. am Handy neu öffnen).', fatal: true });
       if (S.lobby.length >= 6) return conn.send({ t: 'err', msg: 'Der Raum ist voll.', fatal: true });
+      if (S.kicked && S.kicked.has(String(d.name || '').toLowerCase())) return conn.send({ t: 'err', msg: 'Du wurdest aus diesem Raum entfernt.', fatal: true });
       S.conns.set(conn.peer, conn);
       S.lobby.push({ name: String(d.name || 'Gast').slice(0, 16), type: 'human', cid: conn.peer });
       return lobbyChanged();
@@ -303,6 +506,28 @@
       const color = p ? p.color : K.COLORS[Math.max(0, l)];
       addChat({ name, color, text: String(d.text || '').slice(0, 200) });
     }
+  }
+
+  // Gastgeber wirft jemanden raus: in der Lobby verschwindet er, im Spiel übernimmt die KI sein Reich
+  function kickPlayer(cid) {
+    const c = S.conns.get(cid);
+    const lobbyP = S.lobby.find(x => x.cid === cid);
+    if (lobbyP) (S.kicked = S.kicked || new Set()).add(lobbyP.name.toLowerCase());
+    if (c && c.open) c.send({ t: 'err', msg: 'Du wurdest vom Gastgeber aus dem Raum entfernt.', fatal: true });
+    setTimeout(() => { try { if (c) c.close(); } catch { /* egal */ } }, 1500);
+    S.conns.delete(cid);
+    if (S.state) {
+      const p = S.state.players.findIndex(x => x.cid === cid);
+      if (p >= 0) {
+        Object.assign(S.state.players[p], { type: 'ai', level: 'medium', cid: null });
+        S.state.log.push({ m: '👢 {0} wurde vom Gastgeber entfernt – die KI übernimmt.', ps: [p] });
+      }
+      afterChange();
+    } else {
+      S.lobby = S.lobby.filter(x => x.cid !== cid);
+      lobbyChanged();
+    }
+    toast('Spieler entfernt.');
   }
 
   function onGuestLeft(conn) {
@@ -332,7 +557,7 @@
       S.conn = conn;
       conn.on('open', () => conn.send({ t: 'join', name: myName(), v: APP_VERSION }));
       conn.on('data', onGuestData);
-      conn.on('close', () => { if (S.role === 'guest') { toast('Verbindung zum Gastgeber verloren.'); toMenu(); } });
+      conn.on('close', () => { if (S.role === 'guest' && conn === S.conn) { toast('Verbindung zum Gastgeber verloren.'); toMenu(); } });
     });
     peer.on('error', err => {
       toast(err.type === 'peer-unavailable' ? 'Raum nicht gefunden.' : 'Verbindungsfehler: ' + err.type);
@@ -354,13 +579,19 @@
       if (first) show('game');
       render();
     } else if (d.t === 'chat') { S.chat.push(d.msg); renderChat(); }
-    else if (d.t === 'err') { toast(d.msg); if (d.fatal) toMenu(); }
+    else if (d.t === 'err') {
+      if (d.fatal) { S.role = null; toMenu(); notice(d.msg); } else toast(d.msg);
+    }
   }
 
   // ---------- Spielablauf (Gastgeber / lokal) ----------
 
   function startGame(extra = {}) {
-    S.state = K.createGame(S.lobby, { ...S.settings, ...extra });
+    if (S.settings.world) {
+      const n = previewWorld(S.settings, S.lobby.length).cells.length;
+      if (n < S.lobby.length * 2) { toast(`Die Welt „${S.settings.world.name}“ hat nur ${n} Provinzen – zu wenig für ${S.lobby.length} Herrscher.`); return; }
+    }
+    S.state = K.createGame(S.lobby, { ...gameOpts(S.settings), ...extra });
     S.me = 0;
     Object.assign(S, { sel: -1, selDivs: null, split: null, plan: null, seenBattle: 0, seenMarch: 0, turnKey: '', nationKey: '' });
     $('#overlay').hidden = true;
@@ -613,6 +844,8 @@
     if (!$('#planner').hidden) renderPlanner();
     const b = st.battle && st.battle.id !== S.seenBattle ? st.battle : null;
     if (b) { S.seenBattle = b.id; playBattle(b); }
+    const ce = st.crownEvent && st.crownEvent.id !== S.seenCrown ? st.crownEvent : null;
+    if (ce) { S.seenCrown = ce.id; splash(`👑 ${esc(st.players[ce.p].name)}<small>Krone ${ce.n} von ${st.crownGoal}</small>`); Sound.play(ce.p === S.me ? 'win' : 'research'); }
     const m = st.march && st.march.id !== S.seenMarch ? st.march : null;
     if (m) { S.seenMarch = m.id; playMarch(m); }
     tutEvent({ kind: 'render' });
@@ -685,6 +918,7 @@
       if (mt && S.mode === 'recruit') cls.push(c.owner === S.me && K.isCity(c) ? 'can' : 'dim');
       if (mt && S.mode === 'build') cls.push(K.canBuild(st, S.me, i, S.bldg) ? 'can' : 'dim');
       if (i === hint) cls.push('hint');
+      if (c.throne) cls.push('throne');
       g.setAttribute('class', cls.join(' '));
       g.style.setProperty('--c', c.owner >= 0 ? st.players[c.owner].color : 'transparent');
     });
@@ -711,6 +945,7 @@
       const { lx: x, ly: y } = c;
       const col = c.owner >= 0 ? st.players[c.owner].color : '#cfc6b2';
       html += `<text class="pname${c.sz === 'S' ? ' small' : ''}" x="${x}" y="${y - 15}">${esc(c.name)}</text>`;
+      if (c.throne) html += `<g class="throne-mark"><use href="#crown" x="${x - 10}" y="${y - 60}" width="20" height="13"/><text class="throne-txt" x="${x}" y="${y - 63}">THRON</text></g>`;
       if (K.isCity(c)) {
         html += `<use href="#castle" x="${x - 12}" y="${y - 41}" width="24" height="20" style="color:${col}" filter="url(#f-soft)"/>`;
         if (c.capital) html += `<use href="#crown" x="${x - 5}" y="${y - 48}" width="10" height="6.5"/>`;
@@ -1158,12 +1393,13 @@
         else if (pending(S.me, i)) btn = '<span class="tag">angefragt…</span>';
         else if (!pending(i, S.me)) btn = `<button data-ally="${i}" title="Bündnis anbieten">🤝 Bündnis</button>`;
       }
+      if (S.role === 'host' && p.type === 'human' && p.cid && p.cid !== 'host') btn += `<button data-kick="${esc(p.cid)}" class="kick" title="Aus dem Spiel werfen (KI übernimmt)">👢</button>`;
       const ally = i !== S.me && K.allied(st, S.me, i) ? ' 🤝' : '';
       return `<li class="${i === st.turn && !st.over ? 'cur' : ''} ${p.alive ? '' : 'dead'}" style="--pc:${p.color}">
         <span class="dot" style="background:${p.color}"></span>
         <span class="nm">${esc(p.name)}${i === S.me ? ' (Du)' : ''}${ally}</span>
         ${btn}
-        <span class="st">${p.type === 'ai' ? `🤖 ${LEVELS[p.level]} · ` : ''}🏳️ ${s.cells} · ⚔️ ${s.troops} · 🔬 ${s.techs} · ${K.score(st, i)} Punkte</span>
+        <span class="st">${st.mode === 'throne' ? `<b class="crowns">👑 ${st.crowns[i]}/${st.crownGoal}</b> · ` : ''}${p.type === 'ai' ? `🤖 ${LEVELS[p.level]} · ` : ''}🏳️ ${s.cells} · ⚔️ ${s.troops} · 🔬 ${s.techs} · ${K.score(st, i)} Punkte</span>
       </li>`;
     }).join('');
 
@@ -1178,6 +1414,7 @@
     const b = e.target.closest('button');
     if (!b) return;
     const d = b.dataset;
+    if (d.kick) { const p = S.state.players.find(x => x.cid === d.kick); if (p && await ask(`${esc(p.name)} aus dem Spiel werfen? Die KI übernimmt das Reich.`, '👢 Kicken')) kickPlayer(d.kick); return; }
     if (d.ally) act({ type: 'propose', target: +d.ally });
     else if (d.break && await ask('Bündnis wirklich brechen? Alle sehen deinen Verrat!', '🗡️ Brechen')) act({ type: 'break', target: +d.break });
     else if (d.acc) act({ type: 'accept', from: +d.acc });
@@ -1287,6 +1524,15 @@
       <p><b>Leertaste</b> Zug beenden · <b>1 / 2 / 3</b> Ausbilden / Bauen / Armeen · <b>R</b> Forschung · <b>H</b> Hilfe · <b>F</b> ganze Karte · <b>Esc</b> abbrechen · <b>Enter</b> Angriff bestätigen</p>
       <h3>Schwierigkeit</h3>
       <p>Die KI „Schwer“ greift aus mehreren Provinzen gleichzeitig an und bekommt wie in Civilization +20 % Gold und Wissen.</p>
+      <h3>Spielmodi</h3>
+      <p><b>⚔️ Klassisch:</b> Vernichte alle Gegner – oder hab nach 40 Runden die meisten Punkte.<br>
+        <b>👑 Thronkampf:</b> In der Mitte liegt die befestigte Thronstadt. Wer sie zu Beginn seines Zuges hält, bekommt eine Krone – 5 Kronen gewinnen.<br>
+        <b>⚡ Blitzkrieg:</b> Doppeltes Einkommen, nur 20 Runden.</p>
+      <h3>Weltenschmiede</h3>
+      <p>Im Hauptmenü gestaltest du eigene Welten: Grundform, Größe, Landanteil, Provinzgröße, Wald, Gebirge, Wüste, Flüsse, Startgold, Rundenzahl und Friedenszeit.
+        Tippe in der Vorschau auf eine Provinz, um sie umzubenennen. Gespeicherte Welten findest du bei „Welt“ im Einzelspieler und in deinem Online-Raum.</p>
+      <h3>Online-Räume</h3>
+      <p>Der Gastgeber wählt Welt und Modus, kann KI-Herrscher hinzufügen und Spieler mit <b>👢 Kicken</b> entfernen – in der Lobby und im laufenden Spiel (dann übernimmt die KI das Reich).</p>
       <h3>Bündnisse</h3>
       <p>Verbündete können sich nicht angreifen – bis einer das Bündnis bricht. Alle sehen den Verrat. 🗡️</p>
     </div>`;

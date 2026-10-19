@@ -506,3 +506,29 @@ input { background: rgba(0, 0, 0, .35); border: 1px solid var(--line-soft); bord
   .maps button { font-size: .72rem; padding: .4rem .1rem; }
   .update-bar { font-size: .85rem; }
 }
+
+/* ===== Weltenschmiede, Modi, Kicken, Thron ===== */
+.slider { display: flex; flex-direction: column; gap: .15rem; font-size: .88rem; color: #d8cfbc; }
+.slider span { display: flex; justify-content: space-between; gap: .5rem; }
+.slider b { color: var(--gold-hi); font-variant-numeric: tabular-nums; }
+.slider input[type=range] { width: 100%; accent-color: var(--gold); padding: 0; background: none; border: none; }
+.check { display: flex; align-items: center; gap: .5rem; font-size: .9rem; color: #d8cfbc; margin-top: .2rem; }
+.check input { width: auto; accent-color: var(--gold); }
+.pv-frame.forge { cursor: crosshair; }
+.rename { display: flex; flex-direction: column; gap: .3rem; padding: .6rem; border: 1px solid var(--gold); border-radius: 10px; background: rgba(232, 182, 76, .08); }
+.saved { display: flex; flex-direction: column; gap: .3rem; }
+.srow { display: flex; align-items: center; gap: .4rem; padding: .35rem .5rem; border-radius: 9px; background: rgba(255, 255, 255, .04); border: 1px solid var(--line-soft); }
+.srow.on { border-color: var(--gold); }
+.srow span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.srow button { padding: .25em .6em; }
+.seg.modes button { font-size: .9rem; }
+button.kick { color: #ffb0b2; border-color: rgba(229, 72, 77, .4); padding: .15em .55em; }
+.crowns { color: var(--gold-hi); }
+.prov.throne .pr { stroke: #ffd36b; stroke-width: 2.4; stroke-dasharray: 2 3; }
+.throne-mark use { filter: drop-shadow(0 0 4px rgba(255, 210, 100, .9)); animation: crownbob 2s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+@keyframes crownbob { 50% { transform: translateY(-1.5px); } }
+.throne-txt { font: 900 6px var(--display); fill: #ffe2a0; text-anchor: middle; letter-spacing: .2em; paint-order: stroke; stroke: rgba(20, 14, 6, .85); stroke-width: 2px; }
+.pfoot { gap: .5rem; }
+@media (max-width: 860px) {
+  .seg.modes button { font-size: .8rem; padding: .45em .3em; }
+}

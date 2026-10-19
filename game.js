@@ -63,7 +63,12 @@
     desert: { name: 'Wüstenreich', icon: '🏜️', desc: 'Karge Wüste – fruchtbare Flusstäler sind heiß umkämpft.' },
   };
   const MAP_KEYS = Object.keys(MAPS);
-  const SIZES = { small: { name: 'Klein', dim: [34, 24] }, medium: { name: 'Mittel', dim: [44, 30] }, large: { name: 'Groß', dim: [56, 38] } };
+  const SIZES = { small: { name: 'Klein', dim: [34, 24] }, medium: { name: 'Mittel', dim: [44, 30] }, large: { name: 'Groß', dim: [56, 38] }, huge: { name: 'Riesig', dim: [68, 46] } };
+  const MODES = {
+    classic: { name: 'Klassisch', icon: '⚔️', desc: 'Vernichte alle Gegner – oder hab nach 40 Runden die meisten Punkte.' },
+    throne: { name: 'Thronkampf', icon: '👑', desc: 'Erobere die Thronstadt in der Mitte. Wer sie zu Beginn seines Zuges hält, bekommt eine Krone – 5 Kronen gewinnen.' },
+    blitz: { name: 'Blitzkrieg', icon: '⚡', desc: 'Doppeltes Einkommen, nur 20 Runden – schnelle, wilde Partien.' },
+  };
 
   const rnd = n => Math.floor(Math.random() * n);
   const pick = a => a[rnd(a.length)];
@@ -145,11 +150,12 @@
     return s[Math.min(s.length - 1, Math.max(0, Math.floor(q * s.length)))];
   }
 
-  function generateWorld(nPlayers, typeIn, size, seed) {
+  function generateWorld(nPlayers, typeIn, size, seed, cus = {}) {
+    cus = cus || {};
     const rng = mulberry32(seed >>> 0);
     const noise = makeNoise(rng);
     const type = MAPS[typeIn] ? typeIn : MAP_KEYS[(seed >>> 0) % MAP_KEYS.length];
-    const sz = nPlayers >= 5 && size === 'small' ? 'medium' : nPlayers >= 6 && size === 'medium' ? 'large' : size;
+    const sz = cus.fixedSize ? size : nPlayers >= 5 && size === 'small' ? 'medium' : nPlayers >= 6 && size === 'medium' ? 'large' : size;
     const [cols, rows] = SIZES[sz].dim;
     const N = cols * rows;
     const geo = { seed, type, cols, rows, s: HEX_S, W: HEX_S * SQ3 * (cols + 1), H: HEX_S * (1.5 * (rows - 1) + 2) };
@@ -157,7 +163,7 @@
     // 1. Landform je nach Kartentyp
     const ell = (x, y, cx, cy, rx, ry) => ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2;
     const e = new Float32Array(N);
-    const LAND = { continent: 0.55, islands: 0.36, twin: 0.48, inland: 0.48, highlands: 0.6, desert: 0.58 }[type];
+    const LAND = cus.land != null ? cus.land : { continent: 0.55, islands: 0.36, twin: 0.48, inland: 0.48, highlands: 0.6, desert: 0.58 }[type];
     for (let i = 0; i < N; i++) {
       const [x, y] = hexXY(geo, i);
       const nx = x / geo.W, ny = y / geo.H;
@@ -193,10 +199,12 @@
       terr[i] = 'p';
     }
     const hl = landIdx.map(i => elev[i]), ml = landIdx.map(i => moist[i]);
-    const peakQ = { highlands: 0.9, continent: 0.975, twin: 0.975, desert: 0.98 }[type] || 2;
-    const mtnQ = type === 'highlands' ? 0.68 : 0.86;
+    const peakQ = cus.peaks === false ? 2 : cus.peaks === true ? Math.min(0.97, { highlands: 0.9 }[type] || 0.96) : { highlands: 0.9, continent: 0.975, twin: 0.975, desert: 0.98 }[type] || 2;
+    const mtnQ = cus.mountain != null ? 1 - cus.mountain : type === 'highlands' ? 0.68 : 0.86;
     const hPeak = peakQ < 1 ? quantile(hl, peakQ) : Infinity, hMtn = quantile(hl, mtnQ);
-    const mDry = quantile(ml, type === 'desert' ? 0.6 : 0.14), mWet = quantile(ml, type === 'desert' ? 0.9 : 0.66);
+    const dShare = cus.desert != null ? cus.desert : type === 'desert' ? 0.6 : 0.14;
+    const fShare = cus.forest != null ? cus.forest : type === 'desert' ? 0.1 : 0.34;
+    const mDry = quantile(ml, dShare), mWet = quantile(ml, Math.max(dShare, 1 - fShare));
     for (const i of landIdx) {
       terr[i] = elev[i] >= hPeak ? 'x' : elev[i] >= hMtn ? 'm' : moist[i] <= mDry ? 'd' : moist[i] >= mWet ? 'f' : 'p';
     }
@@ -217,7 +225,7 @@
     for (let i = 0; i < N; i++) if (passable(i)) pass.push(i);
 
     // 4. Provinzen: gewichtete Keime wachsen um die Wette (Gebirge bremst → Grenzen folgen Kämmen)
-    const P = Math.max(nPlayers * 5, Math.min(70, Math.round(pass.length / 17)));
+    const P = cus.provSize ? Math.max(6, Math.min(90, Math.round(pass.length / cus.provSize))) : Math.max(nPlayers * 4, Math.min(90, Math.round(pass.length / 17)));
     const seeds = [];
     let minD = Math.sqrt(pass.length / P) * 1.05;
     for (let tries = 0; seeds.length < P && tries < 20000; tries++) {
@@ -307,7 +315,7 @@
     // 5. Flüsse fließen bergab ins Meer
     const rivers = [];
     const isRiver = new Uint8Array(N);
-    const nRiv = { small: 4, medium: 6, large: 9 }[sz] + (type === 'desert' ? 3 : 0);
+    const nRiv = cus.rivers != null ? cus.rivers : { small: 4, medium: 6, large: 9, huge: 12 }[sz] + (type === 'desert' ? 3 : 0);
     const hSrc = quantile(hl, 0.7);
     const srcs = landIdx.filter(i => passable(i) && elev[i] >= hSrc && elev[i] < hPeak);
     for (let k = 0; k < nRiv * 6 && rivers.length < nRiv && srcs.length; k++) {
@@ -537,15 +545,19 @@
 
   function createGame(defs, opts = {}) {
     const seed = opts.seed != null ? opts.seed >>> 0 : (Math.random() * 2 ** 32) >>> 0;
-    const { geo, cells } = generateWorld(defs.length, opts.map || 'continent', SIZES[opts.size] ? opts.size : 'medium', seed);
+    const { geo, cells } = generateWorld(defs.length, opts.map || 'continent', SIZES[opts.size] ? opts.size : 'medium', seed, opts.custom);
+    // eigene Provinznamen aus der Weltenschmiede
+    if (opts.names) for (const [k, v] of Object.entries(opts.names)) if (cells[+k] && v) cells[+k].name = String(v).slice(0, 24);
+    const mode = MODES[opts.mode] ? opts.mode : 'classic';
     const players = defs.map((p, i) => ({
       name: p.name, type: p.type, level: p.level || null, cid: p.cid || null,
-      color: COLORS[i], alive: true, gold: 4, sci: 2, techs: [], lastAsk: -10, divNo: 0,
+      color: COLORS[i], alive: true, gold: opts.gold != null ? +opts.gold : 4, sci: 2, techs: [], lastAsk: -10, divNo: 0,
     }));
     const st = {
       cells, geo, players, turn: 0, round: 1, attacks: 0, divSeq: 0,
       alliances: [], proposals: [], log: [], over: false, winner: -1, battle: null, march: null, seq: 0,
-      maxRounds: MAX_ROUNDS, map: geo.type, truce: opts.truce || 0,
+      maxRounds: opts.rounds ? +opts.rounds : mode === 'blitz' ? 20 : MAX_ROUNDS, map: geo.type, truce: opts.truce || 0,
+      mode, worldName: opts.worldName || '', throne: -1, crowns: players.map(() => 0), crownGoal: 5,
     };
     // neutrale Provinzen: je größer, desto mehr Verteidiger; manche mit Dorf (Belohnung beim Erobern)
     for (const c of cells) {
@@ -575,8 +587,18 @@
         if (m === 1 && cells[j].terrain === 'desert') setTerrain(j, 'plain', 'p');
       });
     });
+    // Thronkampf: die Provinz, die von allen Hauptstädten am weitesten entfernt ist, wird zur befestigten Thronstadt
+    if (mode === 'throne') {
+      const d = bfs(cells, caps);
+      let best = -1;
+      cells.forEach((c, i) => { if (!caps.includes(i) && (best < 0 || d[i] > d[best] || (d[i] === d[best] && c.size > cells[best].size))) best = i; });
+      st.throne = best;
+      Object.assign(cells[best], { throne: true, hut: false, building: 'fort' });
+      setUnits(st, cells[best], { w: 4, a: 2 });
+    }
     geo.terr = terr.join('');
-    log(st, `Das Spiel beginnt auf der Karte „${MAPS[geo.type].name}“!`);
+    log(st, `Das Spiel beginnt${st.worldName ? ` in der Welt „${st.worldName}“` : ` auf der Karte „${MAPS[geo.type].name}“`} – Modus: ${MODES[mode].name}!`);
+    if (mode === 'throne') log(st, `👑 Erobere die Thronstadt ${cells[st.throne].name}! Wer sie zu Beginn seines Zuges hält, bekommt eine Krone – ${st.crownGoal} Kronen gewinnen.`);
     startTurn(st);
     return st;
   }
@@ -633,11 +655,20 @@
   function startTurn(st) {
     const pl = st.players[st.turn], inc = income(st, st.turn);
     // wie bei Civilization: die schwere KI bekommt einen Ressourcenbonus
-    const bonus = pl.type === 'ai' && pl.level === 'hard' ? 1.2 : 1;
+    const bonus = (pl.type === 'ai' && pl.level === 'hard' ? 1.2 : 1) * (st.mode === 'blitz' ? 2 : 1);
     pl.gold = Math.max(0, pl.gold + Math.round(inc.gold * bonus) - inc.upkeep);
     pl.sci += Math.round(inc.sci * bonus);
     for (const c of st.cells) { for (const v of c.divs) v.done = false; sync(c); }
     st.attacks = 0;
+    if (st.mode === 'throne' && st.throne >= 0 && st.cells[st.throne].owner === st.turn && !st.over) {
+      st.crowns[st.turn]++;
+      log(st, `👑 {0} hält den Thron – Krone ${st.crowns[st.turn]} von ${st.crownGoal}!`, st.turn);
+      st.crownEvent = { id: ++st.seq, p: st.turn, n: st.crowns[st.turn] };
+      if (st.crowns[st.turn] >= st.crownGoal) {
+        st.over = true; st.winner = st.turn;
+        log(st, '🏆 {0} wird zum Herrscher über alle Reiche gekrönt!', st.turn);
+      }
+    }
   }
 
   function nextTurn(st) {
@@ -652,7 +683,7 @@
       let best = -1, bestScore = -1;
       st.players.forEach((p, i) => {
         if (!p.alive) return;
-        const s = score(st, i);
+        const s = score(st, i) + (st.mode === 'throne' ? st.crowns[i] * 1000 : 0);
         if (s > bestScore) { bestScore = s; best = i; }
       });
       st.over = true; st.winner = best;
@@ -1039,6 +1070,7 @@
         if (c.hut) v += 2;
         if (c.building) v += 1;
         if (c.capital) v += 3;
+        if (c.throne) v += 8;
         if (c.owner >= 0 && counts[c.owner] === 1) v += 6;
         if (c.owner === leader) v += 0.5;
         v += 0.3 * c.n.filter(j => C[j].owner === p).length;
@@ -1102,6 +1134,6 @@
   global.K = {
     AI_CFG, divUnits, strongestType, createGame, generateWorld, applyAction, aiAction, aiRespond, stats, income, provinceYield, score, allied, odds, total, avail,
     moveTargets, mpOf, canBuild, canResearch, unitUnlocked, hasTech, isCity, defMult, hexNeighbor, hexXY, emptyU, addU, upkeepFor,
-    COLORS, UNITS, TYPES, TERRAIN, PSIZE, BUILDINGS, TECHS, MAPS, SIZES,
+    COLORS, UNITS, TYPES, TERRAIN, PSIZE, BUILDINGS, TECHS, MAPS, SIZES, MODES,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

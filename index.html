@@ -6,7 +6,7 @@
   <title>Kingdoms</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Alegreya+Sans:wght@400;500;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=8">
+  <link rel="stylesheet" href="style.css?v=10">
 </head>
 <body>
 
@@ -203,6 +203,9 @@
       <button class="menu-btn" data-go="multi">
         <span class="mb-ico">👥</span><span><b>Mit Freunden</b><small>Online-Raum erstellen oder beitreten.</small></span>
       </button>
+      <button class="menu-btn" data-go="forge">
+        <span class="mb-ico">🛠️</span><span><b>Weltenschmiede</b><small>Gestalte deine eigene Welt: Form, Größe, Gelände, Namen.</small></span>
+      </button>
       <button class="menu-btn subtle" data-go="help"><span class="mb-ico">📖</span><span><b>Spielanleitung</b></span></button>
     </div>
 
@@ -213,6 +216,7 @@
         <div class="setup-opts">
           <div class="opt"><span class="olabel">Gegner</span><div class="seg" id="soloBots"></div></div>
           <div class="opt"><span class="olabel">Schwierigkeit</span><div class="seg" id="soloLevel"></div></div>
+          <div class="opt"><span class="olabel">Spielmodus</span><div class="seg modes" id="soloMode"></div></div>
           <div class="opt"><span class="olabel">Welt</span><div class="maps" id="soloMaps"></div></div>
           <div class="opt"><span class="olabel">Größe</span><div class="seg" id="soloSize"></div></div>
         </div>
@@ -226,6 +230,22 @@
     </div>
 
     <!-- Mehrspieler -->
+    <!-- Weltenschmiede -->
+    <div class="panel setup" id="panelForge" hidden>
+      <div class="phead"><button class="back" data-go="main">← Zurück</button><h2>🛠️ Weltenschmiede</h2></div>
+      <div class="setup-grid">
+        <div class="setup-opts" id="forgeOpts"></div>
+        <div class="preview">
+          <div class="pv-frame forge"><canvas id="forgePreview"></canvas><div class="pv-loading" id="forgePvLoad">Welt wird geschmiedet…</div></div>
+          <div class="pv-info"><div><b id="forgePvName"></b><small id="forgePvStats"></small></div><button id="forgeReroll">🎲 Neue Form</button></div>
+          <div id="forgeRename" class="rename" hidden></div>
+          <p class="hint">Tipp: Tippe in der Vorschau auf eine Provinz, um sie umzubenennen.</p>
+          <div id="forgeSaved" class="saved"></div>
+        </div>
+      </div>
+      <div class="pfoot"><button id="forgeSave">💾 Speichern</button><button id="forgePlay" class="primary big">⚔️ Speichern &amp; spielen</button></div>
+    </div>
+
     <div class="panel" id="panelMulti" hidden>
       <div class="phead"><button class="back" data-go="main">← Zurück</button><h2>Mit Freunden</h2></div>
       <div class="multi-grid">
@@ -262,6 +282,7 @@
             <button id="btnAddBot">+ KI</button>
           </div>
           <div id="lobbyMapOpts">
+            <div class="opt"><span class="olabel">Spielmodus</span><div class="seg modes" id="lobbyMode"></div></div>
             <div class="opt"><span class="olabel">Welt</span><div class="maps" id="lobbyMaps"></div></div>
             <div class="opt"><span class="olabel">Größe</span><div class="seg" id="lobbySize"></div></div>
           </div>
@@ -367,9 +388,9 @@
 </div>
 
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="audio.js?v=8"></script>
-<script src="game.js?v=8"></script>
-<script src="mapview.js?v=8"></script>
-<script src="app.js?v=8"></script>
+<script src="audio.js?v=10"></script>
+<script src="game.js?v=10"></script>
+<script src="mapview.js?v=10"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>
