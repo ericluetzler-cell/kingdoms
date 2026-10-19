@@ -3,7 +3,8 @@
 (function (global) {
   'use strict';
 
-  const COLORS = ['#e5484d', '#3e8ef7', '#30a46c', '#f5a524', '#9b5de5', '#12a6b5'];
+  // 12 Reichsfarben zur Auswahl (die ersten sechs sind die Standardfarben)
+  const COLORS = ['#e5484d', '#3e8ef7', '#30a46c', '#f5a524', '#9b5de5', '#12a6b5', '#e93d82', '#8ac926', '#a0703c', '#3d4fb5', '#e8e2d0', '#3a3a3a'];
   const MAX_ROUNDS = 40;
   const ATTACK_LIMIT = { easy: 4, medium: 14, hard: 30 };
   const SQ3 = Math.sqrt(3);
@@ -551,7 +552,7 @@
     const mode = MODES[opts.mode] ? opts.mode : 'classic';
     const players = defs.map((p, i) => ({
       name: p.name, type: p.type, level: p.level || null, cid: p.cid || null,
-      color: COLORS[i], alive: true, gold: opts.gold != null ? +opts.gold : 4, sci: 2, techs: [], lastAsk: -10, divNo: 0,
+      color: COLORS.includes(p.color) ? p.color : COLORS[i], alive: true, gold: opts.gold != null ? +opts.gold : 4, sci: 2, techs: [], lastAsk: -10, divNo: 0,
     }));
     const st = {
       cells, geo, players, turn: 0, round: 1, attacks: 0, divSeq: 0,

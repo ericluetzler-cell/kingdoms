@@ -9,7 +9,7 @@
   const ID_PREFIX = 'kingdoms-game-';
   const BLDG_ORDER = ['lumber', 'farm', 'mine', 'library', 'caravan', 'fort'];
   const newSeed = () => (Math.random() * 2 ** 32) >>> 0;
-  const APP_VERSION = '11';
+  const APP_VERSION = '12';
 
   const S = {
     role: null,            // 'local' | 'host' | 'guest'
@@ -67,13 +67,57 @@
   function botEntry(level, list = S.lobby) {
     const used = new Set(list.map(p => p.name));
     const name = BOT_NAMES.find(n => !used.has(n)) || 'Bot ' + (list.length + 1);
-    return { name, type: 'ai', level };
+    const usedC = new Set(list.map(p => p.color));
+    return { name, type: 'ai', level, color: K.COLORS.find(c => !usedC.has(c)) };
   }
 
   // ---------- Titelbildschirm ----------
 
   $('#name').value = store.get('kingdoms-name') || '';
   $('#name').addEventListener('change', () => store.set('kingdoms-name', myName()));
+
+  // ---------- Profil: eigenes Bild und Lieblingsfarbe ----------
+
+  const PROFILE = { color: K.COLORS.includes(store.get('kingdoms-color')) ? store.get('kingdoms-color') : K.COLORS[0], avatar: store.get('kingdoms-avatar') || null };
+  const me0 = () => ({ name: myName(), type: 'human', cid: 'host', color: PROFILE.color, avatar: PROFILE.avatar });
+  // Profilbild oder – ohne Bild – der Anfangsbuchstabe in der Reichsfarbe
+  const avatarHTML = (avatar, name, color, cls = '') => (avatar
+    ? `<img class="ava ${cls}" src="${avatar}" alt="">`
+    : `<span class="ava ${cls}" style="background:${color}">${esc((name || '?').trim().charAt(0).toUpperCase() || '?')}</span>`);
+  const safeAvatar = a => (typeof a === 'string' && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(a) && a.length < 80000 ? a : null);
+  function swatches(el, current, taken, onPick) {
+    el.innerHTML = K.COLORS.map(c => `<button class="sw ${c === current ? 'on' : ''}" data-c="${c}" style="--sw:${c}"
+      ${taken.includes(c) && c !== current ? 'disabled title="Diese Farbe hat schon jemand"' : `title="${c}"`}></button>`).join('');
+    el.onclick = e => { const b = e.target.closest('[data-c]'); if (b && !b.disabled) onPick(b.dataset.c); };
+  }
+  function renderProfile() {
+    $('#avatarBtn').innerHTML = avatarHTML(PROFILE.avatar, myName(), PROFILE.color, 'big') + '<span class="ava-edit">📷</span>';
+    $('#avatarRemove').hidden = !PROFILE.avatar;
+    swatches($('#myColors'), PROFILE.color, [], c => { PROFILE.color = c; store.set('kingdoms-color', c); Sound.play('click'); renderProfile(); });
+  }
+  // Bild quadratisch zuschneiden und auf 128×128 verkleinern – klein genug fürs Online-Spiel, bleibt nur in diesem Browser
+  function loadAvatar(file) {
+    if (!file || !file.type.startsWith('image/')) return toast('Bitte ein Bild auswählen.');
+    if (file.size > 25e6) return toast('Das Bild ist zu groß (höchstens 25 MB).');
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => {
+      const sz = Math.min(img.width, img.height), cv = document.createElement('canvas');
+      cv.width = cv.height = 128;
+      cv.getContext('2d').drawImage(img, (img.width - sz) / 2, (img.height - sz) / 2, sz, sz, 0, 0, 128, 128);
+      URL.revokeObjectURL(url);
+      PROFILE.avatar = cv.toDataURL('image/jpeg', 0.82);
+      store.set('kingdoms-avatar', PROFILE.avatar);
+      renderProfile();
+      toast('Profilbild gespeichert.');
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); toast('Das Bild konnte nicht gelesen werden.'); };
+    img.src = url;
+  }
+  $('#avatarBtn').onclick = $('#avatarUpload').onclick = () => $('#avatarFile').click();
+  $('#avatarFile').onchange = e => { loadAvatar(e.target.files[0]); e.target.value = ''; };
+  $('#avatarRemove').onclick = () => { PROFILE.avatar = null; try { localStorage.removeItem('kingdoms-avatar'); } catch { /* egal */ } renderProfile(); };
+  $('#name').addEventListener('input', () => renderProfile());
+  renderProfile();
 
   setTimeout(async () => {
     const w = K.generateWorld(4, ['continent', 'twin', 'inland', 'islands'][newSeed() % 4], 'large', newSeed());
@@ -177,7 +221,7 @@
     resetSession();
     S.role = 'local';
     S.settings = settings;
-    S.lobby = [{ name: myName(), type: 'human', cid: 'host' }];
+    S.lobby = [me0()];
     const mix = ['easy', 'medium', 'hard'];
     for (let i = 0; i < S.solo.bots; i++) S.lobby.push(botEntry(S.solo.level === 'mixed' ? mix[i % 3] : S.solo.level));
     startGame();
@@ -188,7 +232,8 @@
     resetSession();
     S.role = 'local';
     S.settings = { map: 'continent', size: 'small', seed: newSeed(), mode: 'classic', world: null };
-    S.lobby = [{ name: myName(), type: 'human', cid: 'host' }, { name: 'Graf Bruno', type: 'ai', level: 'easy' }];
+    S.lobby = [me0()];
+    S.lobby.push(botEntry('easy'));
     startGame({ truce: 6 });
     S.tut = { step: 0, recruited: 0 };
     renderCoach();
@@ -198,7 +243,7 @@
     if (!window.Peer) return toast('Online-Modul konnte nicht geladen werden – Internetverbindung prüfen.');
     resetSession();
     S.role = 'host';
-    S.lobby = [{ name: myName(), type: 'human', cid: 'host' }];
+    S.lobby = [me0()];
     openHostPeer();
   };
 
@@ -219,7 +264,7 @@
     clearTimeout(S.aiTimer);
     if (S.peer) { try { S.peer.destroy(); } catch { /* egal */ } }
     Object.assign(S, { role: null, me: 0, state: null, geo: null, lobby: [], code: '', peer: null, conns: new Map(), conn: null,
-      sel: -1, selPref: null, target: -1, mode: 'recruit', unit: 'w', bldg: 'lumber', amount: 1, turnKey: '',
+      avatars: null, sel: -1, selPref: null, target: -1, mode: 'recruit', unit: 'w', bldg: 'lumber', amount: 1, turnKey: '',
       seenBattle: 0, seenMarch: 0, chat: [], tut: null, mapKey: '', nationKey: '', overShown: false, pick: null, plan: null, selDivs: null, split: null });
     $('#planner').hidden = true;
     $('#coach').hidden = true;
@@ -407,12 +452,18 @@
     $('#lobbyHint').textContent = host ? 'Schicke Freunden den Code oder Link. Du kannst auch KI-Herrscher hinzufügen.' : 'Warte, bis der Gastgeber das Spiel startet…';
     seg($('#lobbyBotLevel'), [['easy', 'Leicht'], ['medium', 'Mittel'], ['hard', 'Schwer']], S.botLevel || 'medium', v => { S.botLevel = v; renderLobby(); });
     $('#lobbyList').innerHTML = S.lobby.map((p, i) => `
-      <li><span class="dot" style="background:${K.COLORS[i]}"></span>
+      <li>${avatarHTML(p.avatar, p.name, p.color || K.COLORS[i], 'sm')}<span class="dot" style="background:${p.color || K.COLORS[i]}"></span>
         <span class="grow">${esc(p.name)} ${p.cid === 'host' ? '<span class="tag">👑 Gastgeber</span>' : ''}
           ${p.type === 'ai' ? `<span class="tag">🤖 KI ${LEVELS[p.level]}</span>` : ''}</span>
         ${host && p.type === 'ai' ? `<button data-rm="${i}" title="Entfernen">✕</button>` : ''}
         ${host && p.type === 'human' && p.cid !== 'host' ? `<button data-kick="${esc(p.cid)}" class="kick" title="Aus dem Raum werfen">👢 Kicken</button>` : ''}
       </li>`).join('');
+    const mine = S.lobby.find(x => x.cid === (host ? 'host' : S.peer && S.peer.id));
+    if (mine) swatches($('#lobbyColors'), mine.color, S.lobby.filter(x => x !== mine).map(x => x.color), c => {
+      PROFILE.color = c; store.set('kingdoms-color', c);
+      if (host) { mine.color = c; lobbyChanged(); } else if (S.conn && S.conn.open) S.conn.send({ t: 'color', color: c });
+      Sound.play('click');
+    });
     lobbySetup.refresh();
   }
 
@@ -491,18 +542,27 @@
       if (d.v !== APP_VERSION) return conn.send({ t: 'err', msg: 'Ihr habt verschiedene Versionen von Kingdoms. Bitte beide die Seite neu laden (Strg+F5 bzw. am Handy neu öffnen).', fatal: true });
       if (S.lobby.length >= 6) return conn.send({ t: 'err', msg: 'Der Raum ist voll.', fatal: true });
       S.conns.set(conn.peer, conn);
-      S.lobby.push({ name: String(d.name || 'Gast').slice(0, 16), type: 'human', cid: conn.peer });
+      const usedC = S.lobby.map(x => x.color);
+      const color = K.COLORS.includes(d.color) && !usedC.includes(d.color) ? d.color : K.COLORS.find(c => !usedC.includes(c));
+      S.lobby.push({ name: String(d.name || 'Gast').slice(0, 16), type: 'human', cid: conn.peer, color, avatar: safeAvatar(d.avatar) });
       return lobbyChanged();
     }
     if (d.t === 'action' && S.state) {
       const p = S.state.players.findIndex(x => x.cid === conn.peer);
       return hostApply(p, d.a);
     }
+    if (d.t === 'color' && !S.state) {
+      const e = S.lobby.find(x => x.cid === conn.peer);
+      if (!e || !K.COLORS.includes(d.color)) return;
+      if (S.lobby.some(x => x !== e && x.color === d.color)) return conn.send({ t: 'err', msg: 'Diese Farbe hat schon jemand.' });
+      e.color = d.color;
+      return lobbyChanged();
+    }
     if (d.t === 'chat') {
       const p = S.state ? S.state.players.find(x => x.cid === conn.peer) : null;
       const l = S.lobby.findIndex(x => x.cid === conn.peer);
       const name = p ? p.name : (S.lobby[l] || {}).name || 'Gast';
-      const color = p ? p.color : K.COLORS[Math.max(0, l)];
+      const color = p ? p.color : (S.lobby[l] || {}).color || K.COLORS[0];
       addChat({ name, color, text: String(d.text || '').slice(0, 200) });
     }
   }
@@ -552,7 +612,7 @@
     peer.on('open', () => {
       const conn = peer.connect(ID_PREFIX + code, { reliable: true });
       S.conn = conn;
-      conn.on('open', () => conn.send({ t: 'join', name: myName(), v: APP_VERSION }));
+      conn.on('open', () => conn.send({ t: 'join', name: myName(), v: APP_VERSION, color: PROFILE.color, avatar: PROFILE.avatar }));
       conn.on('data', onGuestData);
       conn.on('close', () => { if (S.role === 'guest' && conn === S.conn) { toast('Verbindung zum Gastgeber verloren.'); toMenu(); } });
     });
@@ -573,7 +633,7 @@
       const first = !S.state;
       S.state = { ...d.state, geo: S.geo };
       S.me = S.state.players.findIndex(p => p.cid === S.peer.id);
-      if (first) show('game');
+      if (first) { show('game'); S.avatars = S.lobby.map(p => p.avatar || null); }
       render();
     } else if (d.t === 'chat') { S.chat.push(d.msg); renderChat(); }
     else if (d.t === 'err') {
@@ -589,6 +649,7 @@
       if (n < S.lobby.length * 2) { toast(`Die Welt „${S.settings.world.name}“ hat nur ${n} Provinzen – zu wenig für ${S.lobby.length} Herrscher.`); return; }
     }
     S.state = K.createGame(S.lobby, { ...gameOpts(S.settings), ...extra });
+    S.avatars = S.lobby.map(p => p.avatar || null);
     S.me = 0;
     Object.assign(S, { sel: -1, selDivs: null, split: null, plan: null, seenBattle: 0, seenMarch: 0, turnKey: '', nationKey: '' });
     $('#overlay').hidden = true;
@@ -1116,7 +1177,8 @@
 
   function renderHud() {
     const st = S.state, pl = st.players[S.me], cur = st.players[st.turn];
-    $('#turnPlate').innerHTML = `<svg class="shield" viewBox="-11 -12 22 26"><path d="M-9 -10h18v7.5c0 7.5 -4.95 11 -9 13c-4.05 -2 -9 -5.5 -9 -13z" fill="${cur.color}" stroke="#e8b64c" stroke-width="1.4"/></svg>
+    const curAva = S.avatars && S.avatars[st.turn];
+    $('#turnPlate').innerHTML = `${curAva ? `<img class="ava tp" src="${curAva}" alt="" style="border-color:${cur.color}">` : `<svg class="shield" viewBox="-11 -12 22 26"><path d="M-9 -10h18v7.5c0 7.5 -4.95 11 -9 13c-4.05 -2 -9 -5.5 -9 -13z" fill="${cur.color}" stroke="#e8b64c" stroke-width="1.4"/></svg>`}
       <div><div class="tp-round">Runde ${Math.min(st.round, st.maxRounds)} / ${st.maxRounds}</div>
       <div class="tp-who">${st.over ? 'Spiel beendet' : myTurn() ? 'Du bist am Zug' : esc(cur.name) + ' ist am Zug…'}</div></div>`;
     if (pl) {
@@ -1393,7 +1455,7 @@
       if (S.role === 'host' && p.type === 'human' && p.cid && p.cid !== 'host') btn += `<button data-kick="${esc(p.cid)}" class="kick" title="Aus dem Spiel werfen (KI übernimmt)">👢</button>`;
       const ally = i !== S.me && K.allied(st, S.me, i) ? ' 🤝' : '';
       return `<li class="${i === st.turn && !st.over ? 'cur' : ''} ${p.alive ? '' : 'dead'}" style="--pc:${p.color}">
-        <span class="dot" style="background:${p.color}"></span>
+        ${avatarHTML(S.avatars && S.avatars[i], p.name, p.color, 'sm')}
         <span class="nm">${esc(p.name)}${i === S.me ? ' (Du)' : ''}${ally}</span>
         ${btn}
         <span class="st">${st.mode === 'throne' ? `<b class="crowns">👑 ${st.crowns[i]}/${st.crownGoal}</b> · ` : ''}${p.type === 'ai' ? `🤖 ${LEVELS[p.level]} · ` : ''}🏳️ ${s.cells} · ⚔️ ${s.troops} · 🔬 ${s.techs} · ${K.score(st, i)} Punkte</span>
@@ -1630,7 +1692,8 @@
   function renderChat() {
     $('#chatBox').hidden = S.role === 'local';
     const box = $('#chat');
-    box.innerHTML = S.chat.slice(-60).map(m => `<div><b style="color:${esc(m.color)}">${esc(m.name)}:</b> ${esc(m.text)}</div>`).join('');
+    const avaOf = name => { const e = S.lobby.find(x => x.name === name); return e ? e.avatar : null; };
+    box.innerHTML = S.chat.slice(-60).map(m => `<div class="cmsg">${avatarHTML(avaOf(m.name), m.name, m.color, 'xs')}<span><b style="color:${esc(m.color)}">${esc(m.name)}:</b> ${esc(m.text)}</span></div>`).join('');
     box.scrollTop = box.scrollHeight;
   }
 
@@ -1646,7 +1709,7 @@
     if (S.role === 'guest') { if (S.conn && S.conn.open) S.conn.send({ t: 'chat', text }); }
     else if (S.role === 'host') {
       const p = S.state ? S.state.players[S.me] : null;
-      addChat({ name: myName(), color: p ? p.color : K.COLORS[0], text: text.slice(0, 200) });
+      addChat({ name: myName(), color: p ? p.color : PROFILE.color, text: text.slice(0, 200) });
     }
   }
 
@@ -1670,7 +1733,7 @@
     setTimeout(() => {
       Sound.play(won ? 'victory' : 'defeat');
       o.innerHTML = `<div class="modal center victory">
-        <svg class="crest" style="width:64px;height:72px"><use href="#crest"/></svg>
+        ${S.avatars && S.avatars[st.winner] ? avatarHTML(S.avatars[st.winner], st.players[st.winner].name, st.players[st.winner].color, 'win') : '<svg class="crest" style="width:64px;height:72px"><use href="#crest"/></svg>'}
         <h1>${won ? 'Sieg!' : 'Spielende'}</h1>
         <p>${pName(st.winner)} ${won ? '– du –' : ''} herrscht über das Land!</p>
         <ol class="ranking">${ranking}</ol>

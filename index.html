@@ -6,7 +6,7 @@
   <title>Kingdoms</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Alegreya+Sans:wght@400;500;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=11">
+  <link rel="stylesheet" href="style.css?v=12">
 </head>
 <body>
 
@@ -191,9 +191,21 @@
     </header>
 
     <div class="menu-main panel" id="menuMain">
-      <label class="field">Dein Name
-        <input id="name" maxlength="16" placeholder="z. B. König Eric" autocomplete="nickname">
-      </label>
+      <div class="profile">
+        <button class="avatar-btn" id="avatarBtn" title="Profilbild ändern"></button>
+        <div class="pfields">
+          <label class="field">Dein Name
+            <input id="name" maxlength="16" placeholder="z. B. König Eric" autocomplete="nickname">
+          </label>
+          <span class="olabel">Deine Farbe</span>
+          <div class="swatches" id="myColors"></div>
+        </div>
+        <input type="file" id="avatarFile" accept="image/*" hidden>
+      </div>
+      <div class="row avatar-actions">
+        <button id="avatarUpload">📷 Profilbild wählen</button>
+        <button id="avatarRemove" class="ghost-btn">Bild entfernen</button>
+      </div>
       <button class="menu-btn featured" data-go="tutorial">
         <span class="mb-ico">🎓</span><span><b>Tutorial</b><small>Neu hier? Lerne das Spiel in 5 Minuten.</small></span>
       </button>
@@ -277,6 +289,7 @@
           <div class="row" id="shareRow"><input id="shareLink" readonly><button id="btnCopy">Link kopieren</button></div>
           <span class="olabel">Spieler</span>
           <ul id="lobbyList" class="lobby-list"></ul>
+          <div class="opt"><span class="olabel">Deine Farbe</span><div class="swatches" id="lobbyColors"></div></div>
           <div class="row" id="botRow">
             <div class="seg" id="lobbyBotLevel"></div>
             <button id="btnAddBot">+ KI</button>
@@ -388,9 +401,9 @@
 </div>
 
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="audio.js?v=11"></script>
-<script src="game.js?v=11"></script>
-<script src="mapview.js?v=11"></script>
-<script src="app.js?v=11"></script>
+<script src="audio.js?v=12"></script>
+<script src="game.js?v=12"></script>
+<script src="mapview.js?v=12"></script>
+<script src="app.js?v=12"></script>
 </body>
 </html>

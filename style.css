@@ -532,3 +532,32 @@ button.kick { color: #ffb0b2; border-color: rgba(229, 72, 77, .4); padding: .15e
 @media (max-width: 860px) {
   .seg.modes button { font-size: .8rem; padding: .45em .3em; }
 }
+
+/* ===== Profil: Bild und Farbe ===== */
+.profile { display: flex; gap: 1rem; align-items: center; }
+.pfields { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: .4rem; }
+.avatar-btn { position: relative; padding: 0; border: none; background: none; border-radius: 50%; flex: none; }
+.avatar-btn:hover .ava { filter: brightness(1.1); }
+.ava-edit { position: absolute; right: -2px; bottom: -2px; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: .8rem;
+  background: var(--panel-solid); border: 1px solid var(--gold); }
+.ava { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex: none;
+  border: 2px solid rgba(255, 255, 255, .25); color: #fff; font: 800 .9rem var(--display); text-shadow: 0 1px 2px rgba(0, 0, 0, .6); background: var(--raise); }
+.ava.big { width: 76px; height: 76px; font-size: 2rem; border: 3px solid var(--gold); box-shadow: 0 6px 18px rgba(0, 0, 0, .5); }
+.ava.sm { width: 26px; height: 26px; font-size: .8rem; }
+.ava.xs { width: 18px; height: 18px; font-size: .6rem; border-width: 1px; }
+.ava.tp { width: 32px; height: 32px; border-width: 2px; }
+.ava.win { width: 96px; height: 96px; font-size: 2.6rem; border: 4px solid var(--gold); box-shadow: 0 0 30px rgba(232, 182, 76, .45); }
+.avatar-actions { justify-content: flex-start; margin-top: -.3rem; }
+.avatar-actions button { padding: .4em .8em; font-size: .88rem; }
+.swatches { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: .3rem; }
+.sw { aspect-ratio: 1; padding: 0; border-radius: 50%; background: var(--sw); border: 2px solid rgba(0, 0, 0, .45); min-width: 0; }
+.sw.on { box-shadow: 0 0 0 2px var(--panel-solid), 0 0 0 4px var(--gold-hi); transform: scale(1.08); }
+.sw:disabled { opacity: .22; cursor: not-allowed; }
+.lobby-list li .ava + .dot { width: 9px; height: 9px; }
+.players li { grid-template-columns: auto 1fr auto; }
+.cmsg { display: flex; gap: .35rem; align-items: flex-start; margin-bottom: .15rem; }
+.cmsg .ava { margin-top: .15rem; }
+@media (max-width: 860px) {
+  .swatches { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .ava.big { width: 64px; height: 64px; }
+}
