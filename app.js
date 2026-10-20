@@ -7,9 +7,11 @@
   const LEVELS = { easy: 'Leicht', medium: 'Mittel', hard: 'Schwer' };
   const BOT_NAMES = ['Graf Bruno', 'Lady Mira', 'König Otto', 'Baronin Ilse', 'Ritter Kunz', 'Herzogin Wanda', 'Fürst Egon', 'Gräfin Liv'];
   const ID_PREFIX = 'kingdoms-game-';
-  const BLDG_ORDER = ['lumber', 'farm', 'mine', 'library', 'caravan', 'fort'];
+  const BLDG_ORDER = ['lumber', 'farm', 'mine', 'library', 'market', 'temple', 'caravan', 'tower', 'barracks', 'fort'];
   const newSeed = () => (Math.random() * 2 ** 32) >>> 0;
-  const APP_VERSION = '14';
+  const APP_VERSION = '16';
+  // nur zum Testen: mit ?debug in der Adresse ist der Spielzustand in der Konsole erreichbar
+  const DEBUG = new URLSearchParams(location.search).has('debug');
 
   const S = {
     role: null,            // 'local' | 'host' | 'guest'
@@ -28,6 +30,8 @@
   };
   const coin = n => `<span class="amt"><i class="coin"></i>${n}</span>`;
   const scroll = n => `<span class="amt"><i class="scroll">📜</i>${n}</span>`;
+
+  if (DEBUG) window.__kingdoms = { S, render: () => render() };
 
   function show(id) { document.querySelectorAll('.screen').forEach(e => { e.hidden = e.id !== id; }); const m = document.querySelector('#menuSound'); if (m) m.hidden = id === 'game'; }
 
@@ -813,11 +817,12 @@
   const readyDivs = c => c.divs.filter(v => !v.done);
   const strongest = u => [...K.TYPES].reverse().find(t => u[t] > 0) || 'w';
   const svgEl = () => $('#map');
-  const SND = { recruit: 'recruit', build: 'build', research: 'research', end: 'click', propose: 'click', accept: 'click', break: 'lose', split: 'select', merge: 'select' };
+  const SND = { recruit: 'recruit', build: 'build', research: 'research', demolish: null, end: 'click', propose: 'click', accept: 'click', break: 'lose', split: 'select', merge: 'select' };
 
   let view = { x: 0, y: 0, w: 100, h: 100 };
   function applyView() { svgEl().setAttribute('viewBox', `${view.x} ${view.y} ${view.w} ${view.h}`); }
   function fitView() {
+    if (!S.state) return;
     const geo = S.state.geo, r = $('#mapwrap').getBoundingClientRect();
     if (!r.width) return;
     const top = r.width < 860 ? 110 : 64, bottom = ($('#actionbar').offsetHeight || 110) + 20;
@@ -991,6 +996,10 @@
     if (b) { S.seenBattle = b.id; playBattle(b); }
     const ce = st.crownEvent && st.crownEvent.id !== S.seenCrown ? st.crownEvent : null;
     if (ce) { S.seenCrown = ce.id; splash(`👑 ${esc(st.players[ce.p].name)}<small>Krone ${ce.n} von ${st.crownGoal}</small>`); Sound.play(ce.p === S.me ? 'win' : 'research'); }
+    const vo = st.volley && st.volley.id !== S.seenVolley ? st.volley : null;
+    if (vo) { S.seenVolley = vo.id; playVolley(vo); }
+    const dm = st.demolish && st.demolish.id !== S.seenDemo ? st.demolish : null;
+    if (dm) { S.seenDemo = dm.id; const c = st.cells[dm.cell]; startFx(Array.from({ length: 10 }, (_, k) => `<circle class="fx-dust" cx="${c.lx - 27}" cy="${c.ly + 4}" r="${2 + (k % 3)}" style="--tx:${(Math.cos(k) * 16).toFixed(1)}px;--ty:${(Math.sin(k) * 12 - 6).toFixed(1)}px"/>`).join(''), 1200); Sound.play('build'); }
     const m = st.march && st.march.id !== S.seenMarch ? st.march : null;
     if (m) { S.seenMarch = m.id; playMarch(m); }
     tutEvent({ kind: 'render' });
@@ -1004,7 +1013,7 @@
     S.splashTimer = setTimeout(() => { s.hidden = true; }, 1700);
   }
 
-  function deselect() { S.sel = -1; S.selDivs = null; S.split = null; $('#info').hidden = true; }
+  function deselect() { S.sel = -1; S.selDivs = null; S.split = null; S.shootFrom = -1; $('#info').hidden = true; }
 
   // Provinz wählen: alle bereiten Divisionen sind ausgewählt
   function selectArmy(i) {
@@ -1052,6 +1061,7 @@
     const selN = S.sel >= 0 ? C[S.sel].n : [];
     const marchT = marchable();
     const hint = S.tut ? tutCell() : -1;
+    const shootT = S.shootFrom >= 0 ? K.shootTargets(st, S.shootFrom) : [];
     document.querySelectorAll('#provs .prov').forEach(g => {
       const i = +g.dataset.i, c = C[i];
       if (!c) return;
@@ -1060,8 +1070,9 @@
       if (i === S.sel) cls.push('sel');
       else if (selN.includes(i) && attackable(i)) cls.push('atk');
       else if (marchT.includes(i)) cls.push('mov');
-      if (mt && S.mode === 'recruit') cls.push(c.owner === S.me && K.isCity(c) ? 'can' : 'dim');
-      if (mt && S.mode === 'build') cls.push(K.canBuild(st, S.me, i, S.bldg) ? 'can' : 'dim');
+      if (mt && S.mode === 'recruit') cls.push(c.owner === S.me && K.canRecruit(c) ? 'can' : 'dim');
+      if (mt && S.mode === 'build') cls.push((S.bldg === 'demolish' ? c.owner === S.me && c.building && !c.throne : K.canBuild(st, S.me, i, S.bldg)) ? 'can' : 'dim');
+      if (S.shootFrom >= 0) { if (i === S.shootFrom) cls.push('sel'); else cls.push(shootT.includes(i) ? 'shoot' : 'dim'); }
       if (i === hint) cls.push('hint');
       if (c.throne) cls.push('throne');
       g.setAttribute('class', cls.join(' '));
@@ -1117,7 +1128,7 @@
   }
 
   // Divisionen wie bei Hearts of Iron: eine Figur je Division (stärkste Einheit) auf einem Sockel mit der Stärke
-  const FIG_W = { w: 12, a: 12, p: 12, k: 17, c: 17, wo: 17, tr: 14, dr: 24 };
+  const FIG_W = { w: 12, a: 12, p: 12, l: 12, k: 17, c: 17, h: 17, t: 19, wo: 17, tr: 14, dr: 24 };
   function renderUnits() {
     const st = S.state, C = st.cells;
     let html = '';
@@ -1181,6 +1192,23 @@
     return `<g><g class="walker"><use href="#fig-${fig}" x="${-fw / 2 - 1}" y="-19" width="${fw + 2}" height="20" style="color:${col}"/></g>
       <animateMotion dur="${dur}s" begin="indefinite" fill="freeze" path="${d}" calcMode="spline" keyTimes="0;1" keySplines=".45 0 .55 1"/></g>`;
   };
+
+  // Pfeilhagel: viele kleine Pfeile fliegen in hohem Bogen auf das Ziel
+  function playVolley(v) {
+    const C = S.state.cells, f = C[v.from], t = C[v.to];
+    let html = '';
+    for (let k = 0; k < Math.min(12, 3 + v.n * 2); k++) {
+      const ox = (Math.sin(k * 2.1) * 8).toFixed(1), oy = (Math.cos(k * 1.7) * 6).toFixed(1);
+      const x1 = f.lx + +ox, y1 = f.ly + +oy, x2 = t.lx + (Math.cos(k * 2.6) * 10), y2 = t.ly + (Math.sin(k * 1.9) * 8);
+      const mx = (x1 + x2) / 2, my = Math.min(y1, y2) - Math.hypot(x2 - x1, y2 - y1) * 0.45;
+      const d = `M${x1} ${y1} Q${mx} ${my} ${x2.toFixed(1)} ${y2.toFixed(1)}`;
+      html += `<g><path d="M-4 0 L3 0" stroke="#3b2a1a" stroke-width="1"/><path d="M3 -1.4 L5.5 0 L3 1.4 Z" fill="#d6dbe0"/>
+        <animateMotion dur="0.7s" begin="indefinite" fill="freeze" path="${d}" rotate="auto" keyPoints="0;1" keyTimes="0;1" calcMode="spline" keySplines=".3 0 .7 1"/></g>`;
+    }
+    html += `<text class="fx-dmg" x="${t.lx}" y="${t.ly - 30}">${v.killed ? '−' + v.killed : 'daneben'}</text>`;
+    startFx(html, 2000);
+    Sound.play('volley');
+  }
 
   function playMarch(m) {
     const C = S.state.cells, col = S.state.players[C[m.to].owner].color;
@@ -1311,6 +1339,7 @@
     return `<div class="army"><div class="ahead"><b>${esc(c.name)}</b>
         <span class="tag">${nSel} Division${nSel === 1 ? '' : 'en'} · ${pickTotal()} Einheiten · Reichweite ${mp}</span>
         <button data-dall>Alle</button>
+        ${c.u.l && !c.shot ? `<button data-shoot class="shootbtn" title="Langbogenschützen schießen bis 2 Provinzen weit">🏹 Fernschuss (${c.u.l})</button>` : ''}
         <button data-dmerge ${nSel >= 2 ? '' : 'disabled'} title="Ausgewählte Divisionen zu einer verbinden">🔗 Zusammenlegen</button></div>${rows}</div>`;
   }
 
@@ -1336,7 +1365,7 @@
           <svg class="ico"><use href="#u-${t}"/></svg>
           <span><b>${u.name}</b><small>${locked ? '🔒 ' + K.TECHS[u.tech].name : `A${u.atk} · V${u.def} · Bew. ${u.mp}`}</small></span><em>${u.cost}<i class="coin"></i></em></button>`;
       };
-      status = `Tippe auf deine Hauptstadt 👑${K.hasTech(st, S.me, 'masonry') ? ' oder eine Festung' : ''} – neue Truppen bilden eine eigene Division`;
+      status = `Tippe auf deine Hauptstadt 👑${K.hasTech(st, S.me, 'masonry') ? ', eine Festung' : ''}${K.hasTech(st, S.me, 'drill') ? ' oder eine Kaserne' : ''} – neue Truppen bilden eine eigene Division`;
       right = `<div class="amount"><button data-amt="1" class="${S.amount === 1 ? 'on' : ''}">×1</button><button data-amt="5" class="${S.amount === 5 ? 'on' : ''}">×5</button></div>`;
       shop = `<div class="shop">${K.TYPES.filter(t => !K.UNITS[t].monster).map(btn).join('')}</div>`;
     } else if (S.mode === 'build') {
@@ -1347,9 +1376,16 @@
           <svg class="ico"><use href="${b === 'fort' ? '#castle' : '#b-' + b}" style="color:${pl.color}"/></svg>
           <span><b>${B.name}</b><small>${locked ? '🔒 ' + K.TECHS[B.tech].name : B.desc}</small></span><em>${B.cost}<i class="coin"></i></em></button>`;
       };
-      const B = K.BUILDINGS[S.bldg];
-      status = `${B.name}: tippe auf eine eigene Provinz (${B.on.length === 4 ? 'beliebiges Gelände' : B.on.map(t => K.TERRAIN[t].name).join(', ')})`;
-      shop = `<div class="shop">${BLDG_ORDER.map(btn).join('')}</div>`;
+      const canDemo = K.hasTech(st, S.me, 'demolition');
+      const demo = `<button class="card-btn ${S.bldg === 'demolish' ? 'on' : ''} ${canDemo ? '' : 'locked'}" data-bldg="demolish" ${canDemo ? '' : 'disabled'}
+          title="Gebäude abreißen – die Hälfte der Kosten gibt es zurück"><span class="demo-ico">🔨</span>
+          <span><b>Abreißen</b><small>${canDemo ? '50 % zurück' : '🔒 Abrissarbeiten'}</small></span></button>`;
+      if (S.bldg === 'demolish') status = 'Abreißen: tippe auf ein eigenes Gebäude – die Hälfte der Kosten gibt es zurück';
+      else {
+        const B = K.BUILDINGS[S.bldg];
+        status = `${B.name}: tippe auf eine eigene Provinz (${B.on.length === 4 ? 'beliebiges Gelände' : B.on.map(t => K.TERRAIN[t].name).join(', ')})`;
+      }
+      shop = `<div class="shop">${BLDG_ORDER.map(btn).join('')}${demo}</div>`;
     } else {
       status = S.sel >= 0 ? '<span class="lg mov"></span>marschieren · <span class="lg atk"></span>angreifen – Ziel antippen, Figur hinziehen oder Rechtsklick'
         : 'Tippe eine Figur (Division) oder eine Provinz an – oder ziehe eine Figur direkt auf ein Ziel';
@@ -1368,6 +1404,7 @@
     else if (d.bldg) { S.bldg = d.bldg; Sound.play('click'); renderBar(); renderProvinces(); }
     else if (d.amt) { S.amount = +d.amt; renderBar(); }
     else if (d.dv) { selectDiv(S.sel, +d.dv, true); }
+    else if (d.shoot !== undefined) { S.shootFrom = S.sel; Sound.play('select'); toast('Wähle ein Ziel für den Fernschuss (gelb markiert).'); render(); }
     else if (d.dall !== undefined) { S.selDivs = readyDivs(st.cells[S.sel]).map(v => v.id); Sound.play('click'); render(); }
     else if (d.dmerge !== undefined) { act({ type: 'merge', cell: S.sel, divs: [...S.selDivs] }); }
     else if (d.dsplit) {
@@ -1403,13 +1440,25 @@
     if (!myTurn()) return;
     const c = st.cells[i], gold = st.players[S.me].gold;
     if (S.mode === 'recruit' && !dropped) {
-      if (c.owner !== S.me || !K.isCity(c)) return toast('Einheiten bildest du in deiner Hauptstadt 👑 oder in Festungen aus.');
+      if (c.owner !== S.me || !K.canRecruit(c)) return toast('Einheiten bildest du in deiner Hauptstadt 👑, in Festungen oder Kasernen aus.');
       const cost = K.UNITS[S.unit].cost;
       const n = Math.min(S.amount, Math.floor(gold / cost));
       if (n < 1) return toast(`Zu wenig Gold – ein ${K.UNITS[S.unit].name} kostet ${cost}.`);
       return act({ type: 'recruit', cell: i, units: { [S.unit]: n } });
     }
-    if (S.mode === 'build' && !dropped) return act({ type: 'build', cell: i, b: S.bldg });
+    if (S.mode === 'build' && !dropped) {
+      if (S.bldg !== 'demolish') return act({ type: 'build', cell: i, b: S.bldg });
+      if (c.owner !== S.me || !c.building) return toast('Tippe auf eines deiner Gebäude.');
+      const B = K.BUILDINGS[c.building];
+      ask(`${B.name} in ${esc(c.name)} abreißen? Du bekommst ${Math.floor(B.cost / 2)} Gold zurück.`, '🔨 Abreißen').then(ok => { if (ok) act({ type: 'demolish', cell: i }); });
+      return;
+    }
+    if (S.shootFrom >= 0) {
+      const from = S.shootFrom;
+      S.shootFrom = -1;
+      if (K.shootTargets(st, from).includes(i)) return act({ type: 'shoot', from, to: i });
+      toast('Fernschuss abgebrochen.'); render(); return;
+    }
     if (S.sel >= 0 && i !== S.sel && pickTotal()) {
       const from = S.sel;
       if (marchable().includes(i)) { const divs = [...S.selDivs]; S.selPref = [from]; S.selDivs = null; return act({ type: 'move', from, to: i, divs }); }
@@ -1422,6 +1471,7 @@
       if (dropped) return toast('Dorthin kommen diese Truppen nicht.');
     }
     if (c.owner === S.me && readyDivs(c).length) { if (i === S.sel) { deselect(); render(); } else selectArmy(i); return; }
+    if (c.owner === S.me && c.u.l && !c.shot && S.mode === 'army') { S.shootFrom = i; toast('Die Truppen haben sich bewegt – aber die Langbogenschützen können noch schießen. Wähle ein Ziel.'); render(); return; }
     if (c.owner === S.me && K.total(c.u)) toast('Diese Truppen haben sich in diesem Zug schon bewegt.');
     deselect(); render();
   }
@@ -1673,6 +1723,10 @@
       <p><b>Leertaste</b> Zug beenden · <b>1 / 2 / 3</b> Ausbilden / Bauen / Armeen · <b>R</b> Forschung · <b>H</b> Hilfe · <b>F</b> ganze Karte · <b>Esc</b> abbrechen · <b>Enter</b> Angriff bestätigen</p>
       <h3>Schwierigkeit</h3>
       <p>Die KI „Schwer“ greift aus mehreren Provinzen gleichzeitig an und bekommt wie in Civilization +20 % Gold und Wissen.</p>
+      <h3>Fernschuss und Abriss</h3>
+      <p><b>🏹 Langbogenschützen</b> können einmal pro Zug und Provinz auf Feinde schießen, die bis zu 2 Provinzen entfernt stehen – auch wenn sie sich schon bewegt haben.
+        Jeder Schütze trifft mit etwa 55 % (Gelände, Größe und Festungen schützen). Pfeile treffen nur leichte Einheiten mit Verteidigung bis 3 – Trolle und Drachen sind zu zäh.<br>
+        Mit der Forschung <b>🔨 Abrissarbeiten</b> kannst du unter „Bauen“ eigene Gebäude abreißen und bekommst die Hälfte der Kosten zurück.</p>
       <h3>Truppenlimit</h3>
       <p>In jede Provinz passen nur begrenzt viele Truppen: klein 8, mittel 10, groß 12 – Hauptstädte und Festungen +6. Das gilt beim Ausbilden, Marschieren und Angreifen.</p>
       <h3>Monster</h3>

@@ -142,6 +142,7 @@
     turn: t => { horn(sfxBus, midi(D - 12), t, 0.9, 0.09); [0, 3, 7, 12].forEach((n, k) => harp(sfxBus, midi(D + n), t + 0.25 + k * 0.08, 0.06)); },
     research: t => { [0, 5, 9, 12, 17].forEach((n, k) => harp(sfxBus, midi(D + 7 + n), t + k * 0.07, 0.07)); },
     error: t => pluck(sfxBus, midi(D - 6), t, 0.2, 0.08),
+    volley: t => { for (let k = 0; k < 6; k++) noise(sfxBus, t + k * 0.05, 0.18, 'bandpass', 2400 + k * 300, 0.12, 4); noise(sfxBus, t + 0.6, 0.25, 'lowpass', 500, 0.25); },
     victory: t => {
       [[0, 0.2], [7, 0.2], [12, 0.2], [7, 0.15], [12, 0.9]].reduce((acc, [n, d]) => { horn(sfxBus, midi(D - 12 + n), t + acc, d, 0.13); return acc + d; }, 0);
       for (let k = 0; k < 6; k++) drum(sfxBus, t + k * 0.2, 0.25, 100);

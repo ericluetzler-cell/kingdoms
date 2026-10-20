@@ -575,3 +575,9 @@ button.kick { color: #ffb0b2; border-color: rgba(229, 72, 77, .4); padding: .15e
 .nrow.start input { border-color: var(--gold-hi); background: rgba(232, 182, 76, .12); }
 .treasure { font-size: .82rem; color: var(--gold-hi); background: rgba(232, 182, 76, .1); border-radius: 8px; padding: .25rem .5rem; }
 .tag.warn { color: #ff9a9d; }
+
+/* ===== Fernschuss, Abriss ===== */
+.prov.shoot .pr { stroke: #ffd36b; stroke-width: 2.8; stroke-dasharray: 3 3; animation: march 1s linear infinite; }
+.prov.shoot .pf { fill: #ffd36b; fill-opacity: .16; }
+.shootbtn { border-color: #ffd36b !important; color: #ffe2a0; }
+.demo-ico { font-size: 1.5rem; width: 28px; text-align: center; }

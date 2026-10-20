@@ -11,7 +11,7 @@
   const HEX_S = 10;
 
   // Reihenfolge = wer bei Verlusten zuerst fällt (billigste zuerst)
-  const TYPES = ['w', 'a', 'p', 'k', 'c', 'wo', 'tr', 'dr'];
+  const TYPES = ['w', 'a', 'p', 'l', 'k', 'c', 'h', 't', 'wo', 'tr', 'dr'];
   const UNITS = {
     wo: { name: 'Wolf', plural: 'Wölfe', cost: 1, atk: 2, def: 2, mp: 1, tech: null, monster: true },
     tr: { name: 'Troll', plural: 'Trolle', cost: 1, atk: 4, def: 5, mp: 1, tech: null, monster: true },
@@ -21,6 +21,9 @@
     p: { name: 'Speerkämpfer', plural: 'Speerkämpfer', cost: 4, atk: 2, def: 2, mp: 1, tech: 'bronze', note: '+2 Verteidigung gegen Ritter' },
     k: { name: 'Ritter', plural: 'Ritter', cost: 5, atk: 4, def: 2, mp: 2, tech: 'riding', note: 'bewegt sich 2 Provinzen weit' },
     c: { name: 'Katapult', plural: 'Katapulte', cost: 6, atk: 6, def: 1, mp: 1, tech: 'math', note: 'ignoriert Festungen und Hauptstädte' },
+    l: { name: 'Langbogenschütze', plural: 'Langbogenschützen', cost: 4, atk: 2, def: 3, mp: 1, tech: 'longbow', ranged: true, note: 'Fernschuss auf Feinde bis 2 Provinzen entfernt' },
+    h: { name: 'Schwere Reiterei', plural: 'Schwere Reiter', cost: 7, atk: 6, def: 3, mp: 2, tech: 'chivalry', note: 'stärkster Angriff, 2 Provinzen weit' },
+    t: { name: 'Tribok', plural: 'Triboke', cost: 9, atk: 9, def: 1, mp: 1, tech: 'engineering', note: 'mächtigste Belagerungswaffe, ignoriert Festungen' },
   };
   const TERRAIN = {
     plain: { name: 'Ebene', def: 0, gold: 1 },
@@ -41,22 +44,33 @@
     library: { name: 'Bibliothek', cost: 5, on: ANY, tech: 'writing', sci: 2, desc: '+2 Wissen' },
     caravan: { name: 'Karawanserei', cost: 5, on: ['desert'], tech: 'trade', gold: 3, desc: '+3 Gold' },
     fort: { name: 'Festung', cost: 8, on: ANY, tech: 'masonry', desc: '+50 % Verteidigung, hier ausbilden' },
+    tower: { name: 'Wachturm', cost: 4, on: ANY, tech: 'masonry', desc: '+25 % Verteidigung' },
+    barracks: { name: 'Kaserne', cost: 5, on: ['plain', 'forest', 'desert'], tech: 'drill', desc: 'hier Einheiten ausbilden' },
+    market: { name: 'Markt', cost: 6, on: ['plain', 'forest', 'desert'], tech: 'commerce', gold: 2, desc: '+2 Gold' },
+    temple: { name: 'Tempel', cost: 6, on: ANY, tech: 'theology', gold: 1, sci: 1, desc: '+1 Gold, +1 Wissen' },
   };
   const TECHS = {
     agri: { name: 'Landwirtschaft', tier: 1, cost: 4, req: null, desc: 'Bauernhof bauen (+2 Gold auf Ebenen)' },
     mining: { name: 'Bergbau', tier: 1, cost: 4, req: null, desc: 'Mine bauen (+3 Gold im Gebirge)' },
     writing: { name: 'Schrift', tier: 1, cost: 4, req: null, desc: 'Bibliothek bauen (+2 Wissen)' },
     archery: { name: 'Bogenbau', tier: 1, cost: 4, req: null, desc: 'Bogenschützen ausbilden (Verteidigung 3)' },
-    masonry: { name: 'Mauerwerk', tier: 1, cost: 5, req: null, desc: 'Festung bauen: +50 % Verteidigung, dort Einheiten ausbilden' },
+    masonry: { name: 'Mauerwerk', tier: 1, cost: 5, req: null, desc: 'Festung (+50 % Verteidigung, dort ausbilden) und Wachturm (+25 %) bauen' },
+    demolition: { name: 'Abrissarbeiten', tier: 1, cost: 3, req: null, desc: 'Gebäude wieder abreißen – die Hälfte der Kosten gibt es zurück' },
     riding: { name: 'Reiterei', tier: 2, cost: 9, req: 'agri', desc: 'Ritter ausbilden (Angriff 4)' },
     bronze: { name: 'Bronzeguss', tier: 2, cost: 9, req: 'mining', desc: 'Speerkämpfer ausbilden (stark gegen Ritter)' },
     math: { name: 'Mathematik', tier: 2, cost: 9, req: 'writing', desc: 'Katapulte ausbilden (Angriff 6, knacken Festungen)' },
     trade: { name: 'Handel', tier: 2, cost: 9, req: 'agri', desc: 'Karawanserei in der Wüste (+3 Gold), Bauernhöfe +1 Gold' },
     roads: { name: 'Straßen', tier: 2, cost: 8, req: 'masonry', desc: 'Alle Truppen bewegen sich 1 Provinz weiter' },
+    longbow: { name: 'Langbogen', tier: 2, cost: 9, req: 'archery', desc: 'Langbogenschützen ausbilden: Fernschuss auf Feinde bis 2 Provinzen entfernt' },
+    drill: { name: 'Drill', tier: 2, cost: 7, req: 'masonry', desc: 'Kaserne bauen: ein weiterer Ort zum Ausbilden' },
+    commerce: { name: 'Handwerk', tier: 2, cost: 8, req: 'writing', desc: 'Markt bauen (+2 Gold)' },
+    theology: { name: 'Theologie', tier: 2, cost: 8, req: 'writing', desc: 'Tempel bauen (+1 Gold, +1 Wissen)' },
     steel: { name: 'Stahl', tier: 3, cost: 15, req: 'bronze', desc: 'Alle Einheiten +1 Angriff' },
     tactics: { name: 'Taktik', tier: 3, cost: 15, req: 'archery', desc: 'Alle Einheiten +1 Verteidigung' },
     university: { name: 'Universität', tier: 3, cost: 14, req: 'math', desc: 'Bibliotheken +2 Wissen' },
     banking: { name: 'Bankwesen', tier: 3, cost: 14, req: 'trade', desc: 'Jedes Gebäude +1 Gold' },
+    chivalry: { name: 'Rittertum', tier: 3, cost: 16, req: 'riding', desc: 'Schwere Reiterei ausbilden (Angriff 6, 2 Provinzen weit)' },
+    engineering: { name: 'Ingenieurwesen', tier: 3, cost: 16, req: 'math', desc: 'Triboke ausbilden (Angriff 9, ignorieren Festungen)' },
   };
   const MAPS = {
     continent: { name: 'Kontinent', icon: '🌍', desc: 'Ein großer Kontinent mit Flüssen, Wäldern und Gebirgen.' },
@@ -78,7 +92,7 @@
   const pick = a => a[rnd(a.length)];
   const akey = (a, b) => Math.min(a, b) + '-' + Math.max(a, b);
 
-  const emptyU = () => ({ w: 0, a: 0, p: 0, k: 0, c: 0, wo: 0, tr: 0, dr: 0 });
+  const emptyU = () => ({ w: 0, a: 0, p: 0, l: 0, k: 0, c: 0, h: 0, t: 0, wo: 0, tr: 0, dr: 0 });
   // Monsterhorte: wer sie besiegt, bekommt den Schatz
   const LAIRS = {
     wolves: { name: 'Wolfsrudel', icon: '🐺', units: { wo: 4 }, gold: 8, sci: 2 },
@@ -692,6 +706,7 @@
   const allied = (st, a, b) => a >= 0 && b >= 0 && a !== b && st.alliances.includes(akey(a, b));
   const aliveCount = st => st.players.filter(p => p.alive).length;
   const isCity = c => c.capital || c.building === 'fort';
+  const canRecruit = c => isCity(c) || c.building === 'barracks';
   // Truppenlimit: klein 8, mittel 10, groß 12, Hauptstadt/Festung +6
   const capOf = c => 8 + { S: 0, M: 2, L: 4 }[c.sz] + (isCity(c) ? 6 : 0);
   const roomIn = c => Math.max(0, capOf(c) - total(c.u));
@@ -704,7 +719,7 @@
     const bonus = (pl.type === 'ai' && pl.level === 'hard' ? 1.2 : 1) * (st.mode === 'blitz' ? 2 : 1);
     pl.gold = Math.max(0, pl.gold + Math.round(inc.gold * bonus) - inc.upkeep);
     pl.sci += Math.round(inc.sci * bonus);
-    for (const c of st.cells) { for (const v of c.divs) v.done = false; sync(c); }
+    for (const c of st.cells) { for (const v of c.divs) v.done = false; c.shot = false; sync(c); }
     st.attacks = 0;
     if (st.mode === 'throne' && st.throne >= 0 && st.cells[st.throne].owner === st.turn && !st.over) {
       st.crowns[st.turn]++;
@@ -747,6 +762,7 @@
   function defMult(cell, siege) {
     let m = 1 + TERRAIN[cell.terrain].def + PSIZE[cell.sz].def;
     if (!siege && isCity(cell)) m += 0.5;
+    if (cell.building === 'tower') m += 0.25;
     return m;
   }
 
@@ -775,7 +791,7 @@
   // Angriffskraft (aus einer oder mehreren Provinzen) gegen Verteidigungskraft → Siegchance
   function odds(st, p, units, to) {
     const A = TYPES.reduce((s, t) => s + (units[t] || 0) * atkOf(st, p, t), 0);
-    const vsK = units.k > 0, siege = units.c > 0;
+    const vsK = units.k > 0 || units.h > 0, siege = units.c > 0 || units.t > 0;
     const mult = defMult(to, siege);
     const D = TYPES.reduce((s, t) => s + to.u[t] * defOf(st, to.owner, t, vsK), 0) * mult;
     const pr = D <= 0 ? (A > 0 ? 1 : 0) : A <= 0 ? 0 : A ** 2.5 / (A ** 2.5 + D ** 2.5);
@@ -806,6 +822,22 @@
       }
     }
     return d;
+  }
+
+  function shootTargets(st, from) {
+    const C = st.cells, p = C[from].owner;
+    const d = new Map([[from, 0]]), q = [from], out = [];
+    for (let h = 0; h < q.length; h++) {
+      const i = q[h];
+      if (d.get(i) >= 2) continue;
+      for (const j of C[i].n) {
+        if (d.has(j)) continue;
+        d.set(j, d.get(i) + 1); q.push(j);
+        const o = C[j].owner;
+        if (o !== p && !allied(st, p, o) && !(o >= 0 && st.round <= st.truce) && total(C[j].u) > 0) out.push(j);
+      }
+    }
+    return out;
   }
 
   const canResearch = (st, p, t) => {
@@ -889,7 +921,7 @@
       case 'recruit': {
         const c = C[a.cell];
         if (!c || c.owner !== p) return fail('Nur in eigenen Provinzen.');
-        if (!isCity(c)) return fail('Einheiten werden in deiner Hauptstadt oder in Festungen ausgebildet.');
+        if (!canRecruit(c)) return fail('Einheiten werden in deiner Hauptstadt, in Festungen oder Kasernen ausgebildet.');
         const units = cleanUnits(a.units);
         if (!total(units)) return fail('Keine Einheiten gewählt.');
         for (const t of TYPES) if (units[t] && UNITS[t].monster) return fail('Monster kann man nicht ausbilden.');
@@ -917,6 +949,43 @@
         me.gold -= B.cost; c.building = a.b;
         if (a.b === 'fort') log(st, `🏰 {0} baut eine Festung in ${c.name}.`, p);
         return { ok: true };
+      }
+      case 'demolish': {
+        const c = C[a.cell];
+        if (!hasTech(st, p, 'demolition')) return fail('Dafür brauchst du die Forschung „Abrissarbeiten“.');
+        if (!c || c.owner !== p) return fail('Nur in eigenen Provinzen.');
+        if (!c.building) return fail('Hier steht kein Gebäude.');
+        if (c.throne) return fail('Die Thronstadt kann man nicht abreißen.');
+        const B = BUILDINGS[c.building], back = Math.floor(B.cost / 2);
+        me.gold += back;
+        log(st, `🔨 {0} reißt ${B.name} in ${c.name} ab (+${back} Gold).`, p);
+        c.building = null;
+        st.demolish = { id: ++st.seq, cell: a.cell };
+        return { ok: true };
+      }
+      case 'shoot': {
+        const f = C[a.from], t = C[a.to];
+        if (!f || !t || f.owner !== p) return fail('Schießen geht nur aus eigenen Provinzen.');
+        const archers = f.u.l || 0;
+        if (!archers) return fail('Hier stehen keine Langbogenschützen.');
+        if (f.shot) return fail('Von hier wurde in diesem Zug schon geschossen.');
+        if (!shootTargets(st, a.from).includes(a.to)) return fail('Ziel ist zu weit weg (höchstens 2 Provinzen) oder nicht feindlich.');
+        f.shot = true;
+        // Pfeile treffen nur leichte Einheiten (Verteidigung höchstens 3); Gelände, Größe und Festungen schützen
+        let hits = 0;
+        const chance = 0.55 / defMult(t, false);
+        for (let k = 0; k < archers; k++) if (Math.random() < chance) hits++;
+        let killed = 0;
+        for (let k = 0; k < hits; k++) {
+          const tt = TYPES.find(x => t.u[x] > 0 && UNITS[x].def <= 3);
+          if (!tt) break;
+          const v = t.divs.filter(d => d.u[tt] > 0).sort((x, y) => y.u[tt] - x.u[tt])[0];
+          v.u[tt]--; killed++;
+          sync(t);
+        }
+        st.volley = { id: ++st.seq, from: a.from, to: a.to, n: archers, killed };
+        log(st, `🏹 {0} beschießt ${t.name}: ${killed} ${killed === 1 ? 'Einheit' : 'Einheiten'} getroffen.`, p);
+        return { ok: true, killed };
       }
       case 'split': {
         const c = C[a.cell];
@@ -1034,8 +1103,8 @@
   const AI_CFG = { hardEcoRounds: 10, hardEcoReserve: 10, hardNeed: 0.62, hardNeedHigh: 0.5, mediumNeed: 0.7, hardArmy: 0.7 };
 
   const AI_TECH = {
-    medium: ['agri', 'archery', 'riding', 'mining', 'writing', 'masonry', 'bronze', 'trade', 'math', 'steel', 'tactics', 'roads', 'banking', 'university'],
-    hard: ['agri', 'mining', 'riding', 'writing', 'masonry', 'math', 'bronze', 'steel', 'trade', 'roads', 'archery', 'tactics', 'banking', 'university'],
+    medium: ['agri', 'archery', 'riding', 'mining', 'writing', 'masonry', 'longbow', 'bronze', 'commerce', 'trade', 'math', 'steel', 'theology', 'tactics', 'roads', 'chivalry', 'banking', 'drill', 'university', 'engineering', 'demolition'],
+    hard: ['agri', 'mining', 'riding', 'writing', 'commerce', 'masonry', 'math', 'bronze', 'archery', 'longbow', 'steel', 'chivalry', 'trade', 'roads', 'drill', 'theology', 'engineering', 'tactics', 'banking', 'university', 'demolition'],
   };
 
   function aiAction(st, p) {
@@ -1078,7 +1147,7 @@
     // 2. Wirtschaft ausbauen
     const ecoOpts = [];
     for (const i of mine) for (const b of Object.keys(BUILDINGS)) {
-      if (b === 'fort' || !canBuild(st, p, i, b)) continue;
+      if (b === 'fort' || b === 'tower' || b === 'barracks' || !canBuild(st, p, i, b)) continue;
       const B = BUILDINGS[b];
       ecoOpts.push({ i, b, cost: B.cost, s: ((B.gold || 0) + (B.sci || 0) * 1.3) / B.cost + (enemyNear(i) ? -0.3 : 0) });
     }
@@ -1092,7 +1161,7 @@
     }
 
     // 3. Einheiten in Städten ausbilden (Unterhalt im Blick behalten)
-    const cities = mine.filter(i => isCity(C[i]));
+    const cities = mine.filter(i => canRecruit(C[i]));
     const s0 = stats(st, p);
     if (cities.length && me.gold >= 2 && (lvl === 'easy' || s0.income > 1 || me.gold >= 8)) {
       const dFront = bfs(C, border.length ? border : mine, j => C[j].owner === p);
@@ -1108,15 +1177,28 @@
       else if (threatened) {
         const enemyKnights = C[city].n.some(j => C[j].owner >= 0 && C[j].u.k > 0);
         if (enemyKnights && has('p')) buy('p', 99);
+        if (has('l')) buy('l', 2);
         if (has('a')) buy('a', 99);
         buy('w', 99);
       } else {
-        const best = has('k') ? 'k' : has('p') ? 'p' : 'w';
-        if (lvl === 'hard' && has('c') && C[city].u.c < 1) buy('c', 1);
+        const best = has('h') ? 'h' : has('k') ? 'k' : has('p') ? 'p' : 'w';
+        if (lvl === 'hard' && has('t') && C[city].u.t < 1) buy('t', 1);
+        else if (lvl === 'hard' && has('c') && C[city].u.c < 1) buy('c', 1);
+        if (has('l') && C[city].u.l < 2 && rnd(2)) buy('l', 1);
         buy(best, Math.floor(g * (lvl === 'hard' ? AI_CFG.hardArmy : 0.5) / UNITS[best].cost));
         buy('w', 99);
       }
       if (total(u)) return { type: 'recruit', cell: city, units: u };
+      }
+    }
+
+    // 3b. Langbogenschützen schießen auf Feinde in Reichweite
+    if (lvl !== 'easy') {
+      for (const i of mine) {
+        if (!C[i].u.l || C[i].shot) continue;
+        const soft = j => TYPES.reduce((n, t) => n + (UNITS[t].def <= 3 ? C[j].u[t] : 0), 0);
+        const tg = shootTargets(st, i).filter(j => soft(j) > 0).sort((x, y) => soft(y) - soft(x) + (C[y].owner >= 0 ? 1 : 0) - (C[x].owner >= 0 ? 1 : 0))[0];
+        if (tg !== undefined) return { type: 'shoot', from: i, to: tg };
       }
     }
 
@@ -1200,7 +1282,7 @@
   }
 
   global.K = {
-    AI_CFG, divUnits, strongestType, capOf, roomIn, createGame, generateWorld, applyAction, aiAction, aiRespond, stats, income, provinceYield, score, allied, odds, total, avail,
+    AI_CFG, divUnits, strongestType, capOf, roomIn, canRecruit, shootTargets, createGame, generateWorld, applyAction, aiAction, aiRespond, stats, income, provinceYield, score, allied, odds, total, avail,
     moveTargets, mpOf, canBuild, canResearch, unitUnlocked, hasTech, isCity, defMult, hexNeighbor, hexXY, emptyU, addU, upkeepFor,
     COLORS, UNITS, TYPES, TERRAIN, PSIZE, BUILDINGS, TECHS, MAPS, SIZES, MODES, LAIRS,
   };
