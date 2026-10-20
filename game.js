@@ -71,6 +71,7 @@
     banking: { name: 'Bankwesen', tier: 3, cost: 14, req: 'trade', desc: 'Jedes Gebäude +1 Gold' },
     chivalry: { name: 'Rittertum', tier: 3, cost: 16, req: 'riding', desc: 'Schwere Reiterei ausbilden (Angriff 6, 2 Provinzen weit)' },
     engineering: { name: 'Ingenieurwesen', tier: 3, cost: 16, req: 'math', desc: 'Triboke ausbilden (Angriff 9, ignorieren Festungen)' },
+    fortification: { name: 'Befestigung', tier: 2, cost: 8, req: 'masonry', desc: 'Stadtmauern um Hauptstadt und Festungen: +50 % Verteidigung – Belagerungswaffen brechen sie nur zur Hälfte' },
   };
   const MAPS = {
     continent: { name: 'Kontinent', icon: '🌍', desc: 'Ein großer Kontinent mit Flüssen, Wäldern und Gebirgen.' },
@@ -661,7 +662,8 @@
   }
 
   function log(st, m, ...ps) {
-    st.log.push({ m, ps });
+    st.logN = (st.logN || 0) + 1;
+    st.log.push({ m, ps, n: st.logN });
     if (st.log.length > 80) st.log.shift();
   }
 
@@ -707,6 +709,7 @@
   const aliveCount = st => st.players.filter(p => p.alive).length;
   const isCity = c => c.capital || c.building === 'fort';
   const canRecruit = c => isCity(c) || c.building === 'barracks';
+  const WALLS_COST = 8;
   // Truppenlimit: klein 8, mittel 10, groß 12, Hauptstadt/Festung +6
   const capOf = c => 8 + { S: 0, M: 2, L: 4 }[c.sz] + (isCity(c) ? 6 : 0);
   const roomIn = c => Math.max(0, capOf(c) - total(c.u));
@@ -763,6 +766,7 @@
     let m = 1 + TERRAIN[cell.terrain].def + PSIZE[cell.sz].def;
     if (!siege && isCity(cell)) m += 0.5;
     if (cell.building === 'tower') m += 0.25;
+    if (cell.walls) m += siege ? 0.25 : 0.5;
     return m;
   }
 
@@ -950,10 +954,28 @@
         if (a.b === 'fort') log(st, `🏰 {0} baut eine Festung in ${c.name}.`, p);
         return { ok: true };
       }
+      case 'walls': {
+        const c = C[a.cell];
+        if (!hasTech(st, p, 'fortification')) return fail('Dafür brauchst du die Forschung „Befestigung“.');
+        if (!c || c.owner !== p) return fail('Nur in eigenen Provinzen.');
+        if (!isCity(c)) return fail('Stadtmauern gehen nur um Hauptstadt und Festungen.');
+        if (c.walls) return fail('Hier stehen schon Stadtmauern.');
+        if (me.gold < WALLS_COST) return fail(`Stadtmauern kosten ${WALLS_COST} Gold.`);
+        me.gold -= WALLS_COST; c.walls = true;
+        log(st, `🧱 {0} baut Stadtmauern um ${c.name}.`, p);
+        return { ok: true };
+      }
       case 'demolish': {
         const c = C[a.cell];
         if (!hasTech(st, p, 'demolition')) return fail('Dafür brauchst du die Forschung „Abrissarbeiten“.');
         if (!c || c.owner !== p) return fail('Nur in eigenen Provinzen.');
+        if (!c.building && c.walls) {
+          const back = Math.floor(WALLS_COST / 2);
+          me.gold += back; c.walls = false;
+          log(st, `🔨 {0} reißt die Stadtmauern von ${c.name} ab (+${back} Gold).`, p);
+          st.demolish = { id: ++st.seq, cell: a.cell };
+          return { ok: true };
+        }
         if (!c.building) return fail('Hier steht kein Gebäude.');
         if (c.throne) return fail('Die Thronstadt kann man nicht abreißen.');
         const B = BUILDINGS[c.building], back = Math.floor(B.cost / 2);
@@ -1103,8 +1125,8 @@
   const AI_CFG = { hardEcoRounds: 10, hardEcoReserve: 10, hardNeed: 0.62, hardNeedHigh: 0.5, mediumNeed: 0.7, hardArmy: 0.7 };
 
   const AI_TECH = {
-    medium: ['agri', 'archery', 'riding', 'mining', 'writing', 'masonry', 'longbow', 'bronze', 'commerce', 'trade', 'math', 'steel', 'theology', 'tactics', 'roads', 'chivalry', 'banking', 'drill', 'university', 'engineering', 'demolition'],
-    hard: ['agri', 'mining', 'riding', 'writing', 'commerce', 'masonry', 'math', 'bronze', 'archery', 'longbow', 'steel', 'chivalry', 'trade', 'roads', 'drill', 'theology', 'engineering', 'tactics', 'banking', 'university', 'demolition'],
+    medium: ['agri', 'archery', 'riding', 'mining', 'writing', 'masonry', 'longbow', 'fortification', 'bronze', 'commerce', 'trade', 'math', 'steel', 'theology', 'tactics', 'roads', 'chivalry', 'banking', 'drill', 'university', 'engineering', 'demolition'],
+    hard: ['agri', 'mining', 'riding', 'writing', 'commerce', 'masonry', 'math', 'fortification', 'bronze', 'archery', 'longbow', 'steel', 'chivalry', 'trade', 'roads', 'drill', 'theology', 'engineering', 'tactics', 'banking', 'university', 'demolition'],
   };
 
   function aiAction(st, p) {
@@ -1142,6 +1164,12 @@
     if (avTech.length) {
       const t = lvl === 'easy' ? avTech.sort((x, y) => TECHS[x].cost - TECHS[y].cost)[0] : AI_TECH[lvl].find(x => avTech.includes(x));
       if (t && me.sci >= TECHS[t].cost) return { type: 'research', tech: t };
+    }
+
+    // 1b. Bedrohte Städte ummauern
+    if (lvl !== 'easy' && hasTech(st, p, 'fortification') && me.gold >= WALLS_COST + 4) {
+      const city = mine.find(i => isCity(C[i]) && !C[i].walls && enemyNear(i));
+      if (city !== undefined) return { type: 'walls', cell: city };
     }
 
     // 2. Wirtschaft ausbauen
@@ -1282,7 +1310,7 @@
   }
 
   global.K = {
-    AI_CFG, divUnits, strongestType, capOf, roomIn, canRecruit, shootTargets, createGame, generateWorld, applyAction, aiAction, aiRespond, stats, income, provinceYield, score, allied, odds, total, avail,
+    AI_CFG, WALLS_COST, divUnits, strongestType, capOf, roomIn, canRecruit, shootTargets, createGame, generateWorld, applyAction, aiAction, aiRespond, stats, income, provinceYield, score, allied, odds, total, avail,
     moveTargets, mpOf, canBuild, canResearch, unitUnlocked, hasTech, isCity, defMult, hexNeighbor, hexXY, emptyU, addU, upkeepFor,
     COLORS, UNITS, TYPES, TERRAIN, PSIZE, BUILDINGS, TECHS, MAPS, SIZES, MODES, LAIRS,
   };

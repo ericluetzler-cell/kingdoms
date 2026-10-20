@@ -8,15 +8,22 @@
   const BOT_NAMES = ['Graf Bruno', 'Lady Mira', 'König Otto', 'Baronin Ilse', 'Ritter Kunz', 'Herzogin Wanda', 'Fürst Egon', 'Gräfin Liv'];
   const ID_PREFIX = 'kingdoms-game-';
   const BLDG_ORDER = ['lumber', 'farm', 'mine', 'library', 'market', 'temple', 'caravan', 'tower', 'barracks', 'fort'];
+  const BUILD_CATS = { eco: ['lumber', 'farm', 'mine', 'library', 'market', 'temple', 'caravan'], mil: ['tower', 'barracks', 'fort', 'walls'], tools: ['demolish'] };
+  function bInfo(b) {
+    if (b === 'walls') return { name: 'Stadtmauern', cost: K.WALLS_COST, tech: 'fortification', desc: '+50 % Verteidigung', icon: '#walls', where: 'Hauptstadt oder Festung' };
+    if (b === 'demolish') return { name: 'Abreißen', cost: 0, tech: 'demolition', desc: '50 % der Kosten zurück', emoji: '🔨', where: 'eigene Gebäude und Mauern' };
+    const B = K.BUILDINGS[b];
+    return { ...B, icon: b === 'fort' ? '#castle' : '#b-' + b, where: B.on.length === 4 ? 'überall' : B.on.map(t => K.TERRAIN[t].name).join(', ') };
+  }
   const newSeed = () => (Math.random() * 2 ** 32) >>> 0;
-  const APP_VERSION = '16';
+  const APP_VERSION = '17';
   // nur zum Testen: mit ?debug in der Adresse ist der Spielzustand in der Konsole erreichbar
   const DEBUG = new URLSearchParams(location.search).has('debug');
 
   const S = {
     role: null,            // 'local' | 'host' | 'guest'
     me: 0, state: null, geo: null, lobby: [], code: '',
-    settings: { map: 'continent', size: 'medium', seed: newSeed(), mode: 'classic', world: null },
+    settings: { map: 'continent', size: 'medium', seed: newSeed(), mode: 'classic', world: null }, bcat: 'eco', showLocked: false,
     solo: { bots: 2, level: 'medium' },
     peer: null, conns: new Map(), conn: null,
     sel: -1, selPref: null, target: -1, mode: 'recruit', unit: 'w', bldg: 'lumber', amount: 1, turnKey: '',
@@ -273,7 +280,7 @@
     if (S.peer) { try { S.peer.destroy(); } catch { /* egal */ } }
     Object.assign(S, { role: null, me: 0, state: null, geo: null, lobby: [], code: '', peer: null, conns: new Map(), conn: null,
       avatars: null, sel: -1, selPref: null, target: -1, mode: 'recruit', unit: 'w', bldg: 'lumber', amount: 1, turnKey: '',
-      seenBattle: 0, seenMarch: 0, chat: [], tut: null, mapKey: '', nationKey: '', overShown: false, pick: null, plan: null, selDivs: null, split: null });
+      seenBattle: 0, seenMarch: 0, chat: [], tut: null, lastLogN: null, mapKey: '', nationKey: '', overShown: false, pick: null, plan: null, selDivs: null, split: null });
     $('#planner').hidden = true;
     $('#coach').hidden = true;
     $('#research').hidden = true;
@@ -973,6 +980,12 @@
       if (myTurn()) {
         Object.assign(S, { mode: st.players[S.me].gold >= 2 ? 'recruit' : 'army', sel: -1, selDivs: null, split: null });
         if (!(S.tut && st.round === 1)) { splash(`Dein Zug<small>Runde ${st.round}</small>`); Sound.play('turn'); }
+        // Rundenbericht: was seit deinem letzten Zug passiert ist (Angriffe auf dich, Bündnisse, Vernichtungen)
+        if (S.lastLogN != null) {
+          const fresh = st.log.filter(l => l.n > S.lastLogN && (l.ps.includes(S.me) || /💀|🏆|👑/.test(l.m)));
+          if (fresh.length) showReport(fresh);
+        }
+        S.lastLogN = st.logN || 0;
       }
     }
     // ankommende Truppen erst nach ihrem Lauf über die Karte zeigen
@@ -1003,6 +1016,15 @@
     const m = st.march && st.march.id !== S.seenMarch ? st.march : null;
     if (m) { S.seenMarch = m.id; playMarch(m); }
     tutEvent({ kind: 'render' });
+  }
+
+  function showReport(entries) {
+    const box = $('#report');
+    box.innerHTML = `<div class="rhead"><b>📜 Seit deinem letzten Zug</b><button class="ghost" data-rclose title="Schließen">✕</button></div>
+      <ul>${entries.slice(-8).map(l => `<li>${esc(l.m).replace(/\{(\d)\}/g, (_, k) => pName(l.ps[k]))}</li>`).join('')}</ul>`;
+    box.hidden = false;
+    clearTimeout(S.reportTimer);
+    S.reportTimer = setTimeout(() => { box.hidden = true; }, 14000);
   }
 
   function splash(html) {
@@ -1071,7 +1093,8 @@
       else if (selN.includes(i) && attackable(i)) cls.push('atk');
       else if (marchT.includes(i)) cls.push('mov');
       if (mt && S.mode === 'recruit') cls.push(c.owner === S.me && K.canRecruit(c) ? 'can' : 'dim');
-      if (mt && S.mode === 'build') cls.push((S.bldg === 'demolish' ? c.owner === S.me && c.building && !c.throne : K.canBuild(st, S.me, i, S.bldg)) ? 'can' : 'dim');
+      if (mt && S.mode === 'build') cls.push((S.bldg === 'demolish' ? c.owner === S.me && ((c.building && !c.throne) || c.walls)
+        : S.bldg === 'walls' ? c.owner === S.me && K.isCity(c) && !c.walls : K.canBuild(st, S.me, i, S.bldg)) ? 'can' : 'dim');
       if (S.shootFrom >= 0) { if (i === S.shootFrom) cls.push('sel'); else cls.push(shootT.includes(i) ? 'shoot' : 'dim'); }
       if (i === hint) cls.push('hint');
       if (c.throne) cls.push('throne');
@@ -1105,6 +1128,7 @@
       if (K.isCity(c)) {
         html += `<use href="#castle" x="${x - 12}" y="${y - 41}" width="24" height="20" style="color:${col}" filter="url(#f-soft)"/>`;
         if (c.capital) html += `<use href="#crown" x="${x - 5}" y="${y - 48}" width="10" height="6.5"/>`;
+        if (c.walls) html += `<use href="#walls" x="${x - 20}" y="${y - 29}" width="40" height="13" filter="url(#f-soft)"/>`;
       }
       const key = c.building ? i + ':' + c.building : '';
       const fresh = key && S.seenBldg[i] !== undefined && S.seenBldg[i] !== key;
@@ -1270,7 +1294,7 @@
     const y = K.provinceYield(st, c);
     const L = c.lair && K.LAIRS[c.lair];
     const kind = L ? `${L.icon} ${L.name}` : c.capital ? '👑 Hauptstadt' : c.throne ? '👑 Thronstadt' : c.building ? K.BUILDINGS[c.building].name : c.hut ? '🛖 Dorf' : '';
-    const chips = [T.name, `${K.PSIZE[c.sz].name}e Provinz`, c.river ? '🏞️ Fluss' : '', kind, `🛡️ ×${K.defMult(c, false).toFixed(2).replace(/\.?0+$/, '')}`]
+    const chips = [T.name, `${K.PSIZE[c.sz].name}e Provinz`, c.river ? '🏞️ Fluss' : '', kind, c.walls ? '🧱 Stadtmauern' : '', `🛡️ ×${K.defMult(c, false).toFixed(2).replace(/\.?0+$/, '')}`]
       .filter(Boolean).map(t => `<span class="chip">${t}</span>`).join('');
     const mine = c.owner === S.me && st.turn === S.me;
     const divs = c.divs.map(v => `<div class="urow"><b class="dname">${esc(v.name)}</b><span class="chips">${unitChips(v.u)}</span>
@@ -1287,6 +1311,7 @@
       <div class="chips">${chips}</div>
       <div class="tag">Ertrag pro Runde: ${coin('+' + y.gold)}${y.sci ? ' ' + scroll('+' + y.sci) : ''}${c.owner < 0 ? ' (nach Eroberung)' : ''}</div>
       ${c.hut ? '<div class="tag">Erobern bringt Gold oder Wissen</div>' : ''}
+      ${myTurn() && S.mode === 'build' && c.owner === S.me ? `<div class="buildable">🔨 Hier baubar: ${[...BLDG_ORDER.filter(b => K.canBuild(st, S.me, i, b)).map(b => K.BUILDINGS[b].name), ...(K.isCity(c) && !c.walls && K.hasTech(st, S.me, 'fortification') ? ['Stadtmauern'] : [])].join(', ') || (c.building ? `nichts – hier steht schon ${K.BUILDINGS[c.building].name}` : 'nichts (Forschung oder Gelände fehlt)')}</div>` : ''}
       ${L ? `<div class="treasure">💰 Schatz: +${L.gold} Gold, +${L.sci} Wissen – besiege die Monster!</div>` : ''}
       ${c.owner >= 0 ? `<div class="tag">Truppen ${K.total(c.u)} / ${K.capOf(c)} (Platz in der Provinz)</div>` : ''}
       ${divs}${extra}`;
@@ -1367,32 +1392,36 @@
       };
       status = `Tippe auf deine Hauptstadt 👑${K.hasTech(st, S.me, 'masonry') ? ', eine Festung' : ''}${K.hasTech(st, S.me, 'drill') ? ' oder eine Kaserne' : ''} – neue Truppen bilden eine eigene Division`;
       right = `<div class="amount"><button data-amt="1" class="${S.amount === 1 ? 'on' : ''}">×1</button><button data-amt="5" class="${S.amount === 5 ? 'on' : ''}">×5</button></div>`;
-      shop = `<div class="shop">${K.TYPES.filter(t => !K.UNITS[t].monster).map(btn).join('')}</div>`;
+      const own = K.TYPES.filter(t => !K.UNITS[t].monster);
+      const openU = own.filter(t => K.unitUnlocked(st, S.me, t)), closedU = own.filter(t => !openU.includes(t));
+      const moreU = closedU.length ? (S.showLocked ? closedU.map(btn).join('')
+        : `<button class="card-btn more-locked" data-showlocked><span class="demo-ico">🔒</span><span><b>${closedU.length} weitere</b><small>Forschung nötig</small></span></button>`) : '';
+      shop = `<div class="shop">${openU.map(btn).join('')}${moreU}</div>`;
     } else if (S.mode === 'build') {
-      const btn = b => {
-        const B = K.BUILDINGS[b], locked = B.tech && !K.hasTech(st, S.me, B.tech);
-        return `<button class="card-btn ${S.bldg === b ? 'on' : ''} ${locked ? 'locked' : ''}" data-bldg="${b}" ${locked || gold < B.cost ? 'disabled' : ''}
-            title="${B.name}: ${B.desc}. Auf: ${B.on.map(t => K.TERRAIN[t].name).join(', ')}">
-          <svg class="ico"><use href="${b === 'fort' ? '#castle' : '#b-' + b}" style="color:${pl.color}"/></svg>
-          <span><b>${B.name}</b><small>${locked ? '🔒 ' + K.TECHS[B.tech].name : B.desc}</small></span><em>${B.cost}<i class="coin"></i></em></button>`;
+      const list = BUILD_CATS[S.bcat];
+      const open = list.filter(b => { const I = bInfo(b); return !I.tech || K.hasTech(st, S.me, I.tech); });
+      const closed = list.filter(b => !open.includes(b));
+      const card = b => {
+        const I = bInfo(b), locked = I.tech && !K.hasTech(st, S.me, I.tech);
+        return `<button class="card-btn ${S.bldg === b ? 'on' : ''} ${locked ? 'locked' : ''}" data-bldg="${b}" ${locked || gold < I.cost ? 'disabled' : ''} title="${I.name}: ${I.desc}. Wo: ${I.where}">
+          ${I.emoji ? `<span class="demo-ico">${I.emoji}</span>` : `<svg class="ico"><use href="${I.icon}" style="color:${pl.color}"/></svg>`}
+          <span><b>${I.name}</b><small>${locked ? '🔒 ' + K.TECHS[I.tech].name : I.desc}</small></span>${I.cost ? `<em>${I.cost}<i class="coin"></i></em>` : ''}</button>`;
       };
-      const canDemo = K.hasTech(st, S.me, 'demolition');
-      const demo = `<button class="card-btn ${S.bldg === 'demolish' ? 'on' : ''} ${canDemo ? '' : 'locked'}" data-bldg="demolish" ${canDemo ? '' : 'disabled'}
-          title="Gebäude abreißen – die Hälfte der Kosten gibt es zurück"><span class="demo-ico">🔨</span>
-          <span><b>Abreißen</b><small>${canDemo ? '50 % zurück' : '🔒 Abrissarbeiten'}</small></span></button>`;
-      if (S.bldg === 'demolish') status = 'Abreißen: tippe auf ein eigenes Gebäude – die Hälfte der Kosten gibt es zurück';
-      else {
-        const B = K.BUILDINGS[S.bldg];
-        status = `${B.name}: tippe auf eine eigene Provinz (${B.on.length === 4 ? 'beliebiges Gelände' : B.on.map(t => K.TERRAIN[t].name).join(', ')})`;
-      }
-      shop = `<div class="shop">${BLDG_ORDER.map(btn).join('')}${demo}</div>`;
+      const cats = `<div class="cats">${[['eco', '🌾 Wirtschaft'], ['mil', '🛡️ Militär'], ['tools', '🔨 Werkzeuge']]
+        .map(([k, l]) => `<button data-bcat="${k}" class="${S.bcat === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+      const I = bInfo(S.bldg);
+      status = S.bldg === 'demolish' ? 'Abreißen: tippe auf ein eigenes Gebäude oder eine Stadtmauer – die Hälfte der Kosten gibt es zurück'
+        : S.bldg === 'walls' ? 'Stadtmauern: tippe auf deine Hauptstadt oder eine Festung' : `${I.name}: tippe auf eine eigene Provinz (${I.where})`;
+      const more = closed.length ? (S.showLocked ? closed.map(card).join('')
+        : `<button class="card-btn more-locked" data-showlocked><span class="demo-ico">🔒</span><span><b>${closed.length} weitere</b><small>Forschung nötig</small></span></button>`) : '';
+      shop = `<div class="shop-wrap">${cats}<div class="shop">${open.map(card).join('')}${more}</div></div>`;
     } else {
       status = S.sel >= 0 ? '<span class="lg mov"></span>marschieren · <span class="lg atk"></span>angreifen – Ziel antippen, Figur hinziehen oder Rechtsklick'
         : 'Tippe eine Figur (Division) oder eine Provinz an – oder ziehe eine Figur direkt auf ein Ziel';
       if (S.sel >= 0) shop = armyPanel();
     }
     bar.innerHTML = `${tabs}<span class="status">${status}</span>
-      <div class="right">${right}<button id="bEnd" class="endturn ${S.mode === 'army' ? 'primary' : ''}" title="Leertaste">Zug beenden ➜</button></div>${shop}`;
+      <div class="right">${right}${S.mode === 'army' ? (() => { const n = st.cells.filter(c => c.owner === S.me && readyDivs(c).length).length; return n ? `<button id="bNext" title="Nächste bereite Armee (Taste N)">⏭ ${n}</button>` : ''; })() : ''}<button id="bEnd" class="endturn ${S.mode === 'army' ? 'primary' : ''}" title="Leertaste">Zug beenden ➜</button></div>${shop}`;
   }
 
   $('#actionbar').onclick = e => {
@@ -1402,6 +1431,14 @@
     if (d.mode) { S.mode = d.mode; deselect(); Sound.play('click'); tutEvent({ kind: 'mode' }); render(); }
     else if (d.unit) { S.unit = d.unit; Sound.play('click'); renderBar(); }
     else if (d.bldg) { S.bldg = d.bldg; Sound.play('click'); renderBar(); renderProvinces(); }
+    else if (d.bcat) {
+      S.bcat = d.bcat; S.showLocked = false;
+      const first = BUILD_CATS[S.bcat].find(b => { const I = bInfo(b); return !I.tech || K.hasTech(st, S.me, I.tech); });
+      S.bldg = first || BUILD_CATS[S.bcat][0];
+      Sound.play('click'); renderBar(); renderProvinces();
+    }
+    else if (d.showlocked !== undefined) { S.showLocked = !S.showLocked; renderBar(); }
+    else if (t.id === 'bNext') nextArmy();
     else if (d.amt) { S.amount = +d.amt; renderBar(); }
     else if (d.dv) { selectDiv(S.sel, +d.dv, true); }
     else if (d.shoot !== undefined) { S.shootFrom = S.sel; Sound.play('select'); toast('Wähle ein Ziel für den Fernschuss (gelb markiert).'); render(); }
@@ -1420,6 +1457,19 @@
     else if (t.id === 'bEnd') endTurn();
   };
 
+  // springt zur nächsten Provinz mit bereiten Truppen, damit keine Armee vergessen wird
+  function nextArmy() {
+    const st = S.state;
+    const ready = st.cells.map((c, i) => i).filter(i => st.cells[i].owner === S.me && readyDivs(st.cells[i]).length);
+    if (!ready.length) return toast('Alle Armeen haben sich in diesem Zug schon bewegt.');
+    const i = ready.find(j => j > S.sel) ?? ready[0];
+    S.mode = 'army';
+    selectArmy(i);
+    const c = st.cells[i];
+    view.x = c.lx - view.w * 0.42; view.y = c.ly - view.h * 0.42;
+    applyView();
+  }
+
   async function endTurn() {
     if (!myTurn()) return;
     const st = S.state;
@@ -1429,6 +1479,7 @@
       if (!await ask(`Du hast noch ${idle} bereite Truppen und ${st.players[S.me].gold} Gold. Zug trotzdem beenden?`, 'Zug beenden')) return;
     }
     deselect();
+    S.lastLogN = S.state.logN || 0;
     act({ type: 'end' });
   }
 
@@ -1447,10 +1498,11 @@
       return act({ type: 'recruit', cell: i, units: { [S.unit]: n } });
     }
     if (S.mode === 'build' && !dropped) {
+      if (S.bldg === 'walls') return act({ type: 'walls', cell: i });
       if (S.bldg !== 'demolish') return act({ type: 'build', cell: i, b: S.bldg });
-      if (c.owner !== S.me || !c.building) return toast('Tippe auf eines deiner Gebäude.');
-      const B = K.BUILDINGS[c.building];
-      ask(`${B.name} in ${esc(c.name)} abreißen? Du bekommst ${Math.floor(B.cost / 2)} Gold zurück.`, '🔨 Abreißen').then(ok => { if (ok) act({ type: 'demolish', cell: i }); });
+      if (c.owner !== S.me || (!c.building && !c.walls)) return toast('Tippe auf eines deiner Gebäude oder eine Stadtmauer.');
+      const what = c.building ? K.BUILDINGS[c.building].name : 'Stadtmauern', cost = c.building ? K.BUILDINGS[c.building].cost : K.WALLS_COST;
+      ask(`${what} in ${esc(c.name)} abreißen? Du bekommst ${Math.floor(cost / 2)} Gold zurück.`, '🔨 Abreißen').then(ok => { if (ok) act({ type: 'demolish', cell: i }); });
       return;
     }
     if (S.shootFrom >= 0) {
@@ -1564,6 +1616,7 @@
     } else if (k === 'Enter' && !$('#planner').hidden) launchAttack();
     else if (k === ' ' && $('#planner').hidden && $('#confirm').hidden) { e.preventDefault(); endTurn(); }
     else if (['1', '2', '3'].includes(k) && myTurn()) { S.mode = ['recruit', 'build', 'army'][+k - 1]; deselect(); tutEvent({ kind: 'mode' }); render(); }
+    else if ((k === 'n' || k === 'N') && myTurn()) nextArmy();
     else if (k === 'r' || k === 'R') $('#btnResearch').click();
     else if (k === 'h' || k === 'H') openHelp();
     else if (k === 'f' || k === 'F') fitView();
@@ -1621,6 +1674,7 @@
     else if (d.e) sendChat(d.e);
   });
   $('#btnSide').onclick = () => $('#side').classList.toggle('open');
+  $('#report').addEventListener('click', () => { $('#report').hidden = true; });
 
   function renderLog() {
     const st = S.state;
@@ -1727,6 +1781,9 @@
       <p><b>🏹 Langbogenschützen</b> können einmal pro Zug und Provinz auf Feinde schießen, die bis zu 2 Provinzen entfernt stehen – auch wenn sie sich schon bewegt haben.
         Jeder Schütze trifft mit etwa 55 % (Gelände, Größe und Festungen schützen). Pfeile treffen nur leichte Einheiten mit Verteidigung bis 3 – Trolle und Drachen sind zu zäh.<br>
         Mit der Forschung <b>🔨 Abrissarbeiten</b> kannst du unter „Bauen“ eigene Gebäude abreißen und bekommst die Hälfte der Kosten zurück.</p>
+      <h3>Stadtmauern</h3>
+      <p>Mit der Forschung <b>🧱 Befestigung</b> baust du unter „Bauen → Militär“ Stadtmauern um Hauptstadt und Festungen (${K.WALLS_COST} Gold): +50 % Verteidigung.
+        Katapulte und Triboke brechen Mauern nur zur Hälfte (+25 % bleiben). Eroberte Mauern gehören dem Eroberer.</p>
       <h3>Truppenlimit</h3>
       <p>In jede Provinz passen nur begrenzt viele Truppen: klein 8, mittel 10, groß 12 – Hauptstädte und Festungen +6. Das gilt beim Ausbilden, Marschieren und Angreifen.</p>
       <h3>Monster</h3>

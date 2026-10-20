@@ -6,7 +6,7 @@
   <title>Kingdoms</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Alegreya+Sans:wght@400;500;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=16">
+  <link rel="stylesheet" href="style.css?v=17">
 </head>
 <body>
 
@@ -127,6 +127,11 @@
       <path d="M8 7 L22 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
       <rect x="4.5" y="9" width="4" height="4" fill="currentColor"/>
       <path d="M22 2 V7" stroke="currentColor" stroke-width="1.2"/><circle cx="22" cy="8.4" r="1.6" fill="currentColor"/>
+    </symbol>
+    <symbol id="walls" viewBox="0 0 40 13">
+      <path d="M1 4 h3 v-3 h3 v3 h3 v-3 h3 v3 h3 v-3 h3 v3 h3 v-3 h3 v3 h3 v-3 h3 v3 h3 v-3 h3 v3 h2 V13 H1 Z" fill="#a39b8a" stroke="#4a443a" stroke-width=".8" stroke-linejoin="round"/>
+      <path d="M1 8 H39 M8 4 V8 M16 8 V13 M24 4 V8 M32 8 V13" stroke="#6f685b" stroke-width=".6"/>
+      <path d="M17 13 V9.5 a3 3 0 0 1 6 0 V13 Z" fill="#3b2f22"/>
     </symbol>
     <!-- neue Gebäude -->
     <symbol id="b-tower" viewBox="0 0 24 24">
@@ -476,6 +481,7 @@
   </header>
 
   <div id="info" class="info glass" hidden></div>
+  <div id="report" class="report glass" hidden></div>
   <div id="banner" class="banner" hidden></div>
   <div id="turnSplash" class="turn-splash" hidden></div>
   <div class="zoom glass">
@@ -536,9 +542,9 @@
 </div>
 
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="audio.js?v=16"></script>
-<script src="game.js?v=16"></script>
-<script src="mapview.js?v=16"></script>
-<script src="app.js?v=16"></script>
+<script src="audio.js?v=17"></script>
+<script src="game.js?v=17"></script>
+<script src="mapview.js?v=17"></script>
+<script src="app.js?v=17"></script>
 </body>
 </html>
