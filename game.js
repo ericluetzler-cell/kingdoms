@@ -11,8 +11,11 @@
   const HEX_S = 10;
 
   // Reihenfolge = wer bei Verlusten zuerst fällt (billigste zuerst)
-  const TYPES = ['w', 'a', 'p', 'k', 'c'];
+  const TYPES = ['w', 'a', 'p', 'k', 'c', 'wo', 'tr', 'dr'];
   const UNITS = {
+    wo: { name: 'Wolf', plural: 'Wölfe', cost: 1, atk: 2, def: 2, mp: 1, tech: null, monster: true },
+    tr: { name: 'Troll', plural: 'Trolle', cost: 1, atk: 4, def: 5, mp: 1, tech: null, monster: true },
+    dr: { name: 'Drache', plural: 'Drachen', cost: 1, atk: 10, def: 16, mp: 1, tech: null, monster: true },
     w: { name: 'Krieger', plural: 'Krieger', cost: 2, atk: 1, def: 1, mp: 1, tech: null },
     a: { name: 'Bogenschütze', plural: 'Bogenschützen', cost: 3, atk: 1, def: 3, mp: 1, tech: 'archery' },
     p: { name: 'Speerkämpfer', plural: 'Speerkämpfer', cost: 4, atk: 2, def: 2, mp: 1, tech: 'bronze', note: '+2 Verteidigung gegen Ritter' },
@@ -64,7 +67,7 @@
     desert: { name: 'Wüstenreich', icon: '🏜️', desc: 'Karge Wüste – fruchtbare Flusstäler sind heiß umkämpft.' },
   };
   const MAP_KEYS = Object.keys(MAPS);
-  const SIZES = { small: { name: 'Klein', dim: [34, 24] }, medium: { name: 'Mittel', dim: [44, 30] }, large: { name: 'Groß', dim: [56, 38] }, huge: { name: 'Riesig', dim: [68, 46] } };
+  const SIZES = { small: { name: 'Klein', dim: [34, 24] }, medium: { name: 'Mittel', dim: [44, 30] }, large: { name: 'Groß', dim: [56, 38] }, huge: { name: 'Riesig', dim: [68, 46] }, epic: { name: 'Gigantisch', dim: [84, 56] } };
   const MODES = {
     classic: { name: 'Klassisch', icon: '⚔️', desc: 'Vernichte alle Gegner – oder hab nach 40 Runden die meisten Punkte.' },
     throne: { name: 'Thronkampf', icon: '👑', desc: 'Erobere die Thronstadt in der Mitte. Wer sie zu Beginn seines Zuges hält, bekommt eine Krone – 5 Kronen gewinnen.' },
@@ -75,7 +78,13 @@
   const pick = a => a[rnd(a.length)];
   const akey = (a, b) => Math.min(a, b) + '-' + Math.max(a, b);
 
-  const emptyU = () => ({ w: 0, a: 0, p: 0, k: 0, c: 0 });
+  const emptyU = () => ({ w: 0, a: 0, p: 0, k: 0, c: 0, wo: 0, tr: 0, dr: 0 });
+  // Monsterhorte: wer sie besiegt, bekommt den Schatz
+  const LAIRS = {
+    wolves: { name: 'Wolfsrudel', icon: '🐺', units: { wo: 4 }, gold: 8, sci: 2 },
+    trolls: { name: 'Trollhöhle', icon: '👹', units: { tr: 3 }, gold: 16, sci: 5 },
+    dragon: { name: 'Drachenhort', icon: '🐉', units: { dr: 1, wo: 2 }, gold: 35, sci: 12 },
+  };
   const total = u => TYPES.reduce((s, t) => s + (u[t] || 0), 0);
   const addU = (a, b) => { const r = emptyU(); for (const t of TYPES) r[t] = (a[t] || 0) + (b[t] || 0); return r; };
   const costOf = u => TYPES.reduce((s, t) => s + (u[t] || 0) * UNITS[t].cost, 0);
@@ -226,7 +235,7 @@
     for (let i = 0; i < N; i++) if (passable(i)) pass.push(i);
 
     // 4. Provinzen: gewichtete Keime wachsen um die Wette (Gebirge bremst → Grenzen folgen Kämmen)
-    const P = cus.provSize ? Math.max(6, Math.min(90, Math.round(pass.length / cus.provSize))) : Math.max(nPlayers * 4, Math.min(90, Math.round(pass.length / 17)));
+    const P = cus.provSize ? Math.max(6, Math.min(170, Math.round(pass.length / cus.provSize))) : Math.max(nPlayers * 4, Math.min(170, Math.round(pass.length / 17)));
     const seeds = [];
     let minD = Math.sqrt(pass.length / P) * 1.05;
     for (let tries = 0; seeds.length < P && tries < 20000; tries++) {
@@ -316,7 +325,7 @@
     // 5. Flüsse fließen bergab ins Meer
     const rivers = [];
     const isRiver = new Uint8Array(N);
-    const nRiv = cus.rivers != null ? cus.rivers : { small: 4, medium: 6, large: 9, huge: 12 }[sz] + (type === 'desert' ? 3 : 0);
+    const nRiv = cus.rivers != null ? cus.rivers : { small: 4, medium: 6, large: 9, huge: 12, epic: 16 }[sz] + (type === 'desert' ? 3 : 0);
     const hSrc = quantile(hl, 0.7);
     const srcs = landIdx.filter(i => passable(i) && elev[i] >= hSrc && elev[i] < hPeak);
     for (let k = 0; k < nRiv * 6 && rivers.length < nRiv && srcs.length; k++) {
@@ -453,7 +462,19 @@
     return { geo, cells };
   }
 
-  function placeCapitals(cells, n) {
+  function placeCapitals(cells, n, fixed = []) {
+    const pre = [...new Set(fixed.filter(i => cells[i]))].slice(0, n);
+    if (pre.length >= n) return pre;
+    if (pre.length) {
+      const starts = pre.slice();
+      while (starts.length < n) {
+        const d = bfs(cells, starts);
+        let bestI = -1;
+        cells.forEach((c, i) => { if (!starts.includes(i) && (bestI < 0 || d[i] > d[bestI])) bestI = i; });
+        starts.push(bestI);
+      }
+      return starts;
+    }
     const bfsP = starts => {
       const d = new Array(cells.length).fill(Infinity), q = [...starts];
       starts.forEach(s => { d[s] = 0; });
@@ -561,11 +582,12 @@
       mode, worldName: opts.worldName || '', throne: -1, crowns: players.map(() => 0), crownGoal: 5,
     };
     // neutrale Provinzen: je größer, desto mehr Verteidiger; manche mit Dorf (Belohnung beim Erobern)
+    const cus0 = opts.custom || {};
     for (const c of cells) {
       const u = emptyU();
       u.w = { S: 1, M: 1 + rnd(2), L: 2 + rnd(2) }[c.sz];
       if ((c.terrain === 'forest' || c.terrain === 'mountain' || c.sz === 'L') && Math.random() < 0.4) u.a = 1;
-      if (Math.random() < 0.12) { c.hut = true; u.w += 1; }
+      if (cus0.huts ? cus0.huts.includes(cells.indexOf(c)) : Math.random() < 0.12) { c.hut = true; u.w += 1; }
       setUnits(st, c, u);
     }
     const terr = geo.terr.split('');
@@ -574,7 +596,8 @@
       geo.prov.forEach((p, i) => { if (p === ci && terr[i] !== 'x' && (terr[i] !== 'm' || t === 'mountain')) terr[i] = code; });
     };
     const order = shuffleCopy(players.map((_, i) => i));
-    const caps = placeCapitals(cells, players.length);
+    const cus = opts.custom || {};
+    const caps = placeCapitals(cells, players.length, cus.starts || []);
     caps.forEach((ci, k) => {
       Object.assign(cells[ci], { owner: order[k], capital: true, hut: false });
       setUnits(st, cells[ci], { w: 3 });
@@ -588,13 +611,32 @@
         if (m === 1 && cells[j].terrain === 'desert') setTerrain(j, 'plain', 'p');
       });
     });
+    // Monsterhorte: in der Weltenschmiede gesetzt, sonst zufällig verteilt (nie direkt neben einer Hauptstadt)
+    const nearCap = new Set(caps.flatMap(ci => [ci, ...cells[ci].n]));
+    let lairSpots;
+    if (cus.lairs) lairSpots = Object.entries(cus.lairs).map(([k, t]) => [+k, t]).filter(([i, t]) => cells[i] && LAIRS[t] && !caps.includes(i));
+    else {
+      const free = shuffleCopy(cells.map((c, i) => i).filter(i => !nearCap.has(i)));
+      const n = Math.round(cells.length * (cus.monsters != null ? cus.monsters : 0.11));
+      lairSpots = free.slice(0, n).map(i => {
+        const c = cells[i], r = Math.random();
+        const t = (c.sz === 'L' || c.terrain === 'mountain') && r < 0.3 ? 'dragon' : r < 0.55 ? 'wolves' : 'trolls';
+        return [i, t];
+      });
+    }
+    for (const [i, t] of lairSpots) {
+      Object.assign(cells[i], { lair: t, hut: false });
+      cells[i].divs = [newDiv(st, -1, LAIRS[t].units, LAIRS[t].name)];
+      sync(cells[i]);
+    }
+
     // Thronkampf: die Provinz, die von allen Hauptstädten am weitesten entfernt ist, wird zur befestigten Thronstadt
     if (mode === 'throne') {
       const d = bfs(cells, caps);
       let best = -1;
       cells.forEach((c, i) => { if (!caps.includes(i) && (best < 0 || d[i] > d[best] || (d[i] === d[best] && c.size > cells[best].size))) best = i; });
       st.throne = best;
-      Object.assign(cells[best], { throne: true, hut: false, building: 'fort' });
+      Object.assign(cells[best], { throne: true, hut: false, building: 'fort', lair: null });
       setUnits(st, cells[best], { w: 4, a: 2 });
     }
     geo.terr = terr.join('');
@@ -650,6 +692,9 @@
   const allied = (st, a, b) => a >= 0 && b >= 0 && a !== b && st.alliances.includes(akey(a, b));
   const aliveCount = st => st.players.filter(p => p.alive).length;
   const isCity = c => c.capital || c.building === 'fort';
+  // Truppenlimit: klein 8, mittel 10, groß 12, Hauptstadt/Festung +6
+  const capOf = c => 8 + { S: 0, M: 2, L: 4 }[c.sz] + (isCity(c) ? 6 : 0);
+  const roomIn = c => Math.max(0, capOf(c) - total(c.u));
   // Einheiten, die in diesem Zug noch handeln können
   const avail = c => { const r = emptyU(); for (const t of TYPES) r[t] = Math.max(0, c.u[t] - (c.done ? c.done[t] : 0)); return r; };
 
@@ -847,7 +892,9 @@
         if (!isCity(c)) return fail('Einheiten werden in deiner Hauptstadt oder in Festungen ausgebildet.');
         const units = cleanUnits(a.units);
         if (!total(units)) return fail('Keine Einheiten gewählt.');
+        for (const t of TYPES) if (units[t] && UNITS[t].monster) return fail('Monster kann man nicht ausbilden.');
         for (const t of TYPES) if (units[t] && !unitUnlocked(st, p, t)) return fail(`${UNITS[t].plural} brauchen „${TECHS[UNITS[t].tech].name}“.`);
+        if (total(units) > roomIn(c)) return fail(`Kein Platz: In ${c.name} passen höchstens ${capOf(c)} Truppen (noch ${roomIn(c)} frei).`);
         const cost = costOf(units);
         if (cost > me.gold) return fail(`Zu wenig Gold (${cost} nötig).`);
         // neue Rekruten sammeln sich in dieser Runde in einer eigenen Division
@@ -903,6 +950,7 @@
         const units = specUnits(f, spec);
         if (typeof units === 'string') return fail(units);
         if (!total(units)) return fail('Keine Truppen ausgewählt.');
+        if (total(units) > roomIn(t)) return fail(`Kein Platz: In ${t.name} passen höchstens ${capOf(t)} Truppen (noch ${roomIn(t)} frei).`);
         if (!moveTargets(st, a.from, units).includes(a.to)) {
           const mp = mpOf(st, p, units);
           return fail(`Zu weit – diese Truppen schaffen ${mp} Provinz${mp === 1 ? '' : 'en'} pro Zug (nur durch eigenes Land).`);
@@ -928,6 +976,7 @@
           force = addU(force, u);
         }
         if (!total(force)) return fail('Wähle Truppen für den Angriff aus.');
+        if (total(force) > capOf(t)) return fail(`Zu viele Truppen: In ${t.name} passen höchstens ${capOf(t)}.`);
         if (t.owner === p) return fail('Das ist deine eigene Provinz.');
         if (allied(st, p, t.owner)) return fail('Du kannst keine Verbündeten angreifen.');
         if (t.owner >= 0 && st.round <= st.truce) return fail(`Friedenszeit: Spieler können erst ab Runde ${st.truce + 1} angegriffen werden.`);
@@ -947,13 +996,20 @@
           t.owner = p; t.divs = [];
           arrive(t, attDivs);
           let reward = '';
+          if (t.lair) {
+            const L = LAIRS[t.lair];
+            me.gold += L.gold; me.sci += L.sci;
+            reward = ` ${L.icon} Schatz: +${L.gold} Gold, +${L.sci} Wissen!`;
+            log(st, `${L.icon} {0} besiegt den ${L.name} in ${t.name}! Schatz: +${L.gold} Gold, +${L.sci} Wissen.`, p);
+            t.lair = null;
+          }
           if (t.hut) {
             t.hut = false;
             if (Math.random() < 0.5) { me.gold += 6; reward = ' Im Dorf: +6 Gold!'; } else { me.sci += 4; reward = ' Im Dorf: +4 Wissen!'; }
           }
           if (t.capital) { t.capital = false; t.building = 'fort'; log(st, `👑 {0} erobert die Hauptstadt ${t.name} von {1}!`, p, prev); }
           else if (prev >= 0) log(st, `⚔️ {0} erobert ${t.name} von {1}.` + reward, p, prev);
-          else log(st, `🚩 {0} erobert ${t.name}.` + reward, p);
+          else if (!reward.includes('Schatz')) log(st, `🚩 {0} erobert ${t.name}.` + reward, p);
           checkEliminated(st, prev);
           st.battle = { id: ++st.seq, from: main, froms, to: a.to, won, aL, dL, p: o.p, reward, prev, fig: strongestType(force) };
         } else {
@@ -1040,11 +1096,12 @@
     const s0 = stats(st, p);
     if (cities.length && me.gold >= 2 && (lvl === 'easy' || s0.income > 1 || me.gold >= 8)) {
       const dFront = bfs(C, border.length ? border : mine, j => C[j].owner === p);
-      const city = cities.slice().sort((x, y) => dFront[x] - dFront[y])[0];
+      const city = cities.filter(i => roomIn(C[i]) > 0).sort((x, y) => dFront[x] - dFront[y])[0];
       const has = t => unitUnlocked(st, p, t);
       const u = emptyU();
-      let g = me.gold;
-      const buy = (t, n) => { n = Math.max(0, Math.min(n, Math.floor(g / UNITS[t].cost))); u[t] += n; g -= n * UNITS[t].cost; };
+      let g = me.gold, room = city !== undefined ? roomIn(C[city]) : 0;
+      const buy = (t, n) => { n = Math.max(0, Math.min(n, room, Math.floor(g / UNITS[t].cost))); u[t] += n; g -= n * UNITS[t].cost; room -= n; };
+      if (city !== undefined) {
       const enemyPow = C[city].n.reduce((s, j) => s + (C[j].owner >= 0 && C[j].owner !== p && !allied(st, p, C[j].owner) ? total(C[j].u) : 0), 0);
       const threatened = enemyPow > total(C[city].u);
       if (lvl === 'easy') buy('w', 99);
@@ -1060,6 +1117,7 @@
         buy('w', 99);
       }
       if (total(u)) return { type: 'recruit', cell: city, units: u };
+      }
     }
 
     // 4. Angreifen – mittlere KI aus einer Provinz, schwere KI aus allen Nachbarprovinzen gleichzeitig
@@ -1072,6 +1130,7 @@
         if (c.building) v += 1;
         if (c.capital) v += 3;
         if (c.throne) v += 8;
+        if (c.lair) v += LAIRS[c.lair].gold / 6;
         if (c.owner >= 0 && counts[c.owner] === 1) v += 6;
         if (c.owner === leader) v += 0.5;
         v += 0.3 * c.n.filter(j => C[j].owner === p).length;
@@ -1093,6 +1152,11 @@
         let use;
         if (lvl === 'hard') use = srcs;
         else use = [srcs.sort((x, y) => odds(st, p, y.units, C[t]).p - odds(st, p, x.units, C[t]).p)[0]];
+        // nicht mehr Truppen schicken, als in die Zielprovinz passen
+        let over = use.reduce((n, s) => n + total(s.units), 0) - capOf(C[t]);
+        for (const s of use) while (over > 0 && total(s.units) > 0) { removeCheapest(s.units); over--; }
+        use = use.filter(s => total(s.units) > 0);
+        if (!use.length) continue;
         const force = use.reduce((u, s) => addU(u, s.units), emptyU());
         const pr = odds(st, p, force, C[t]).p;
         if (lvl === 'easy') { if (pr > 0.35 && rnd(3) === 0) return { type: 'attack', to: t, sources: use }; continue; }
@@ -1112,8 +1176,11 @@
         const u = avail(C[i]);
         if (d[i] === 0 || d[i] === Infinity || !total(u)) continue;
         if (C[i].capital) { const keep = 1; for (let k = 0; k < keep && total(u); k++) removeCheapest(u); if (!total(u)) continue; }
-        const targets = moveTargets(st, i, u).filter(j => d[j] < d[i]).sort((x, y) => d[x] - d[y]);
-        if (targets.length) return { type: 'move', from: i, to: targets[0], units: u };
+        const targets = moveTargets(st, i, u).filter(j => d[j] < d[i] && roomIn(C[j]) > 0).sort((x, y) => d[x] - d[y]);
+        if (targets.length) {
+          while (total(u) > roomIn(C[targets[0]])) removeCheapest(u);
+          return { type: 'move', from: i, to: targets[0], units: u };
+        }
       }
     }
     // 6. Zum Zugende kleine Divisionen zu einer Armee je Provinz zusammenlegen
@@ -1133,8 +1200,8 @@
   }
 
   global.K = {
-    AI_CFG, divUnits, strongestType, createGame, generateWorld, applyAction, aiAction, aiRespond, stats, income, provinceYield, score, allied, odds, total, avail,
+    AI_CFG, divUnits, strongestType, capOf, roomIn, createGame, generateWorld, applyAction, aiAction, aiRespond, stats, income, provinceYield, score, allied, odds, total, avail,
     moveTargets, mpOf, canBuild, canResearch, unitUnlocked, hasTech, isCity, defMult, hexNeighbor, hexXY, emptyU, addU, upkeepFor,
-    COLORS, UNITS, TYPES, TERRAIN, PSIZE, BUILDINGS, TECHS, MAPS, SIZES, MODES,
+    COLORS, UNITS, TYPES, TERRAIN, PSIZE, BUILDINGS, TECHS, MAPS, SIZES, MODES, LAIRS,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

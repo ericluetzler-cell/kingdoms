@@ -9,7 +9,7 @@
   const ID_PREFIX = 'kingdoms-game-';
   const BLDG_ORDER = ['lumber', 'farm', 'mine', 'library', 'caravan', 'fort'];
   const newSeed = () => (Math.random() * 2 ** 32) >>> 0;
-  const APP_VERSION = '12';
+  const APP_VERSION = '14';
 
   const S = {
     role: null,            // 'local' | 'host' | 'guest'
@@ -149,7 +149,11 @@
     list() { try { return JSON.parse(store.get('kingdoms-worlds') || '[]'); } catch { return []; } },
     save(list) { store.set('kingdoms-worlds', JSON.stringify(list)); },
   };
-  const worldCustom = w => ({ land: w.land, provSize: w.provSize, forest: w.forest, mountain: w.mountain, desert: w.desert, rivers: w.rivers, peaks: w.peaks, fixedSize: true });
+  const worldCustom = w => ({
+    land: w.land, provSize: w.provSize, forest: w.forest, mountain: w.mountain, desert: w.desert, rivers: w.rivers, peaks: w.peaks, fixedSize: true,
+    monsters: w.monsters != null ? w.monsters : 0.11, starts: w.starts || [],
+    lairs: w.lairsManual ? w.lairs || {} : undefined, huts: w.hutsManual ? w.huts || [] : undefined,
+  });
   // Einstellungen (Karte oder eigene Welt + Modus) in Optionen für K.createGame übersetzen
   function gameOpts(set) {
     const mode = set.mode || 'classic', w = set.world;
@@ -186,7 +190,7 @@
           changed();
         }, can);
         seg($(`#${p}Mode`), Object.entries(K.MODES).map(([k, m]) => [k, `${m.icon} ${m.name}`]), st.mode || 'classic', v => { S.settings = { ...st, mode: v }; changed(); }, can);
-        seg($(`#${p}Size`), Object.entries(K.SIZES).filter(([k]) => k !== 'huge').map(([k, s]) => [k, s.name]), st.world ? '' : st.size, v => { S.settings = { ...st, size: v }; changed(); }, can && !st.world);
+        seg($(`#${p}Size`), Object.entries(K.SIZES).map(([k, s]) => [k, s.name]), st.world ? '' : st.size, v => { S.settings = { ...st, size: v }; changed(); }, can && !st.world);
         $(`#${p}Reroll`).hidden = !can || !!st.world;
         $(`#${p}Reroll`).onclick = () => { S.settings = { ...S.settings, seed: newSeed() }; changed(); };
         clearTimeout(pvTimer);
@@ -280,10 +284,10 @@
   const forge = (() => {
     const DEF = () => ({
       id: 'w' + Date.now().toString(36), name: 'Meine Welt', type: 'continent', size: 'medium', seed: newSeed(),
-      land: 0.55, provSize: 17, forest: 0.34, mountain: 0.14, desert: 0.14, rivers: 6, peaks: true,
-      names: {}, rounds: 40, gold: 4, truce: 0,
+      land: 0.55, provSize: 17, forest: 0.34, mountain: 0.14, desert: 0.14, rivers: 6, peaks: true, monsters: 0.11,
+      names: {}, starts: [], lairs: {}, huts: [], lairsManual: false, hutsManual: false, rounds: 40, gold: 4, truce: 0,
     });
-    let F = DEF(), world = null, pvTimer, renaming = -1;
+    let F = DEF(), world = null, pvTimer, renaming = -1, tool = 'rename';
     // Regler: [Schlüssel, Beschriftung, min, max, Schritt, Anzeige, verändert die Provinzaufteilung?]
     const SLIDERS = [
       ['land', 'Landanteil', 0.25, 0.75, 0.01, v => Math.round(v * 100) + ' %', true],
@@ -291,13 +295,27 @@
       ['forest', 'Wald', 0, 0.7, 0.01, v => Math.round(v * 100) + ' %', false],
       ['mountain', 'Gebirge', 0, 0.5, 0.01, v => Math.round(v * 100) + ' %', true],
       ['desert', 'Wüste', 0, 0.7, 0.01, v => Math.round(v * 100) + ' %', false],
-      ['rivers', 'Flüsse', 0, 16, 1, v => v, false],
+      ['rivers', 'Flüsse', 0, 20, 1, v => v, false],
+      ['monsters', 'Monsterhorte (zufällig)', 0, 0.3, 0.01, v => (v ? Math.round(v * 100) + ' % der Provinzen' : 'keine'), false],
     ];
     const RULES = [
       ['gold', 'Startgold', 0, 30, 1, v => v],
       ['rounds', 'Rundenzahl', 15, 80, 5, v => v],
       ['truce', 'Friedenszeit (Runden)', 0, 10, 1, v => v || 'keine'],
     ];
+    const TOOLS = [
+      ['rename', '✏️', 'Umbenennen'], ['start', '🏰', 'Startstadt'], ['wolves', '🐺', 'Wolfsrudel'],
+      ['trolls', '👹', 'Trollhöhle'], ['dragon', '🐉', 'Drachenhort'], ['hut', '🛖', 'Dorf'], ['erase', '🧽', 'Entfernen'],
+    ];
+    const TOOL_HELP = {
+      rename: 'Tippe auf eine Provinz, um sie umzubenennen.',
+      start: 'Tippe auf Provinzen, um Startstädte festzulegen (höchstens 6). Dort beginnen die Reiche – benenne sie gleich mit ✏️.',
+      wolves: 'Tippe auf eine Provinz, um ein Wolfsrudel zu setzen (leicht, kleiner Schatz).',
+      trolls: 'Tippe auf eine Provinz, um eine Trollhöhle zu setzen (zäh, mittlerer Schatz).',
+      dragon: 'Tippe auf eine Provinz, um einen Drachenhort zu setzen (sehr stark, großer Schatz).',
+      hut: 'Tippe auf Provinzen, um Dörfer zu setzen oder zu entfernen (Belohnung beim Erobern).',
+      erase: 'Tippe auf eine Provinz, um Startstadt, Monster und Dorf dort zu entfernen.',
+    };
 
     function slider([k, label, min, max, step, fmt]) {
       return `<label class="slider"><span>${label}<b id="fv-${k}">${fmt(F[k])}</b></span>
@@ -312,8 +330,15 @@
         <div class="opt"><span class="olabel">Grundform</span><div class="maps">${maps}</div></div>
         <div class="opt"><span class="olabel">Größe</span><div class="seg">${sizes}</div></div>
         <div class="opt"><span class="olabel">Landschaft</span>${SLIDERS.map(slider).join('')}
-          <label class="check"><input type="checkbox" id="forgePeaks" ${F.peaks ? 'checked' : ''}> Unpassierbare Gipfel</label></div>
+          <label class="check"><input type="checkbox" id="forgePeaks" ${F.peaks ? 'checked' : ''}> Unpassierbare Gipfel</label>
+          <label class="check"><input type="checkbox" id="forgeLairsManual" ${F.lairsManual ? 'checked' : ''}> Monster nur selbst platzieren</label>
+          <label class="check"><input type="checkbox" id="forgeHutsManual" ${F.hutsManual ? 'checked' : ''}> Dörfer nur selbst platzieren</label></div>
         <div class="opt"><span class="olabel">Spielregeln</span>${RULES.map(slider).join('')}</div>`;
+    }
+
+    function renderTools() {
+      $('#forgeTools').innerHTML = TOOLS.map(([k, ic, label]) => `<button data-tool="${k}" class="${tool === k ? 'on' : ''}" title="${label}"><span>${ic}</span>${label}</button>`).join('');
+      $('#forgeToolHelp').textContent = TOOL_HELP[tool];
     }
 
     function renderSaved() {
@@ -323,36 +348,60 @@
           <button data-wl="${w.id}">Laden</button><button data-wd="${w.id}" title="Löschen">🗑️</button></div>`).join('') : '';
     }
 
+    // Namensliste aller Provinzen zum schnellen Umbenennen
+    function renderNames() {
+      if (!world) return;
+      const box = $('#forgeNames');
+      const open = box.open;
+      const icon = { plain: '🌾', forest: '🌲', mountain: '⛰️', desert: '🏜️' };
+      box.innerHTML = `<summary>📜 Alle Provinznamen (${world.cells.length})</summary><div class="namelist">` +
+        world.cells.map((c, i) => `<label class="nrow ${F.starts.includes(i) ? 'start' : ''}"><span>${F.starts.includes(i) ? '🏰' : icon[c.terrain]}</span>
+          <input data-ni="${i}" maxlength="24" value="${esc(c.name)}" class="${F.names[i] !== undefined ? 'custom' : ''}"></label>`).join('') + '</div>';
+      box.open = open;
+    }
+
     function drawPreview() {
       clearTimeout(pvTimer);
       $('#forgePvLoad').hidden = false;
       pvTimer = setTimeout(() => {
         world = K.generateWorld(2, F.type, F.size, F.seed, worldCustom(F));
         for (const [k, v] of Object.entries(F.names)) if (world.cells[+k]) world.cells[+k].name = v;
-        const width = 1100, src = MapView.preview(world.geo, width), cv = $('#forgePreview');
+        const width = 1200, src = MapView.preview(world.geo, width), cv = $('#forgePreview');
         cv.width = src.width; cv.height = src.height;
         const g = cv.getContext('2d');
         g.drawImage(src, 0, 0);
-        // Provinznamen auf die Vorschau schreiben
+        // Provinznamen und Markierungen (Startstädte, Monster, Dörfer) auf die Vorschau zeichnen
         const sc = width / world.geo.W;
         g.textAlign = 'center'; g.lineJoin = 'round';
         world.cells.forEach((c, i) => {
+          const x = c.lx * sc, y = c.ly * sc;
+          const marks = [];
+          const si = F.starts.indexOf(i);
+          if (si >= 0) marks.push('🏰');
+          if (F.lairsManual && F.lairs[i]) marks.push(K.LAIRS[F.lairs[i]].icon);
+          if (F.hutsManual && F.huts.includes(i)) marks.push('🛖');
+          if (marks.length) {
+            g.font = `${Math.max(14, 11 * sc)}px sans-serif`;
+            g.fillText(marks.join(''), x, y - Math.max(10, 8 * sc));
+          }
           const custom = F.names[i] !== undefined;
-          g.font = `700 ${Math.max(10, 7.5 * sc)}px Cinzel, Georgia, serif`;
+          g.font = `700 ${Math.max(10, 7.2 * sc)}px Cinzel, Georgia, serif`;
           g.strokeStyle = 'rgba(20,14,6,.85)'; g.lineWidth = 3;
-          g.fillStyle = i === renaming ? '#ffe2a0' : custom ? '#ffd27a' : '#fff8e6';
-          g.strokeText(c.name, c.lx * sc, c.ly * sc);
-          g.fillText(c.name, c.lx * sc, c.ly * sc);
+          g.fillStyle = i === renaming ? '#ffe2a0' : si >= 0 ? '#ffd27a' : custom ? '#ffe9b8' : '#fff8e6';
+          g.strokeText(c.name, x, y + 4);
+          g.fillText(c.name, x, y + 4);
         });
         $('#forgePvLoad').hidden = true;
         const nTerr = { plain: 0, forest: 0, mountain: 0, desert: 0 };
         world.cells.forEach(c => nTerr[c.terrain]++);
+        const nLairs = F.lairsManual ? Object.keys(F.lairs).length : Math.round(world.cells.length * F.monsters);
         $('#forgePvName').textContent = `🛠️ ${F.name || 'Ohne Namen'}`;
-        $('#forgePvStats').textContent = `${world.cells.length} Provinzen · ${nTerr.forest} Wald · ${nTerr.mountain} Gebirge · ${nTerr.desert} Wüste · für bis zu ${Math.min(6, Math.floor(world.cells.length / 4))} Herrscher`;
+        $('#forgePvStats').textContent = `${world.cells.length} Provinzen · ${F.starts.length} Startstädte · ${nLairs} Monsterhorte${F.lairsManual ? '' : ' (zufällig)'} · bis zu ${Math.min(6, Math.floor(world.cells.length / 4))} Herrscher`;
+        renderNames();
       }, 120);
     }
 
-    // Klick in die Vorschau → Provinz finden → umbenennen
+    // Klick in die Vorschau → Provinz finden → Werkzeug anwenden
     $('#forgePreview').addEventListener('click', e => {
       if (!world) return;
       const r = e.target.getBoundingClientRect();
@@ -364,13 +413,29 @@
         if (d < bd) { bd = d; best = i; }
       }
       if (best < 0 || bd > (world.geo.s * 1.5) ** 2) return;
-      renaming = world.geo.prov[best];
-      const c = world.cells[renaming];
-      $('#forgeRename').innerHTML = `<span class="olabel">Provinz umbenennen</span><div class="row">
-        <input id="renameIn" maxlength="24" value="${esc(c.name)}"><button id="renameOk" class="primary">OK</button>
-        ${F.names[renaming] !== undefined ? '<button id="renameReset" title="Ursprünglichen Namen verwenden">↺</button>' : ''}</div>`;
-      $('#forgeRename').hidden = false;
-      $('#renameIn').focus(); $('#renameIn').select();
+      const pi = world.geo.prov[best], c = world.cells[pi];
+      if (tool === 'rename') {
+        renaming = pi;
+        $('#forgeRename').innerHTML = `<span class="olabel">Provinz umbenennen</span><div class="row">
+          <input id="renameIn" maxlength="24" value="${esc(c.name)}"><button id="renameOk" class="primary">OK</button>
+          ${F.names[pi] !== undefined ? '<button id="renameReset" title="Ursprünglichen Namen verwenden">↺</button>' : ''}</div>`;
+        $('#forgeRename').hidden = false;
+        $('#renameIn').focus(); $('#renameIn').select();
+      } else if (tool === 'start') {
+        if (F.starts.includes(pi)) F.starts = F.starts.filter(x => x !== pi);
+        else if (F.starts.length >= 6) return toast('Höchstens 6 Startstädte.');
+        else { F.starts.push(pi); delete F.lairs[pi]; F.huts = F.huts.filter(x => x !== pi); }
+      } else if (K.LAIRS[tool]) {
+        if (F.starts.includes(pi)) return toast('Auf einer Startstadt kann kein Monsterhort sein.');
+        if (F.lairs[pi] === tool) delete F.lairs[pi]; else F.lairs[pi] = tool;
+        if (!F.lairsManual) { F.lairsManual = true; renderOpts(); toast('Monster werden jetzt nur dort gesetzt, wo du sie platzierst.'); }
+      } else if (tool === 'hut') {
+        if (F.huts.includes(pi)) F.huts = F.huts.filter(x => x !== pi); else F.huts.push(pi);
+        if (!F.hutsManual) { F.hutsManual = true; renderOpts(); toast('Dörfer werden jetzt nur dort gesetzt, wo du sie platzierst.'); }
+      } else if (tool === 'erase') {
+        F.starts = F.starts.filter(x => x !== pi); delete F.lairs[pi]; F.huts = F.huts.filter(x => x !== pi);
+      }
+      Sound.play('click');
       drawPreview();
     });
     $('#forgeRename').addEventListener('click', e => {
@@ -381,10 +446,25 @@
       } else if (e.target.id === 'renameReset') { delete F.names[renaming]; renaming = -1; $('#forgeRename').hidden = true; drawPreview(); }
     });
     $('#forgeRename').addEventListener('keydown', e => { if (e.key === 'Enter') $('#renameOk').click(); });
+    $('#forgeNames').addEventListener('change', e => {
+      const i = e.target.dataset.ni;
+      if (i === undefined) return;
+      const v = e.target.value.trim();
+      if (v) F.names[i] = v.slice(0, 24); else delete F.names[i];
+      drawPreview();
+    });
+    $('#forgeTools').addEventListener('click', e => {
+      const b = e.target.closest('[data-tool]');
+      if (!b) return;
+      tool = b.dataset.tool; renaming = -1; $('#forgeRename').hidden = true;
+      renderTools();
+    });
 
-    // Ändert sich die Provinzaufteilung, passen eigene Namen nicht mehr – dann zurücksetzen
+    // Ändert sich die Provinzaufteilung, passen Namen und Markierungen nicht mehr – dann zurücksetzen
     function structural() {
-      if (Object.keys(F.names).length) { F.names = {}; toast('Eigene Provinznamen wurden zurückgesetzt, weil sich die Provinzen geändert haben.'); }
+      const had = Object.keys(F.names).length + F.starts.length + Object.keys(F.lairs).length + F.huts.length;
+      if (had) toast('Eigene Namen, Startstädte, Monster und Dörfer wurden zurückgesetzt, weil sich die Provinzen geändert haben.');
+      F.names = {}; F.starts = []; F.lairs = {}; F.huts = [];
       renaming = -1; $('#forgeRename').hidden = true;
     }
 
@@ -398,7 +478,11 @@
       if (def[6]) structural();
       if (SLIDERS.some(x => x[0] === k)) drawPreview();
     });
-    $('#forgeOpts').addEventListener('change', e => { if (e.target.id === 'forgePeaks') { F.peaks = e.target.checked; structural(); drawPreview(); } });
+    $('#forgeOpts').addEventListener('change', e => {
+      if (e.target.id === 'forgePeaks') { F.peaks = e.target.checked; structural(); drawPreview(); }
+      if (e.target.id === 'forgeLairsManual') { F.lairsManual = e.target.checked; drawPreview(); }
+      if (e.target.id === 'forgeHutsManual') { F.hutsManual = e.target.checked; drawPreview(); }
+    });
     $('#forgeOpts').addEventListener('click', e => {
       const b = e.target.closest('button');
       if (!b) return;
@@ -408,6 +492,7 @@
       renderOpts(); drawPreview();
     });
     $('#forgeReroll').onclick = () => { F.seed = newSeed(); structural(); drawPreview(); };
+    $('#forgeNew').onclick = () => { F = DEF(); renderOpts(); renderSaved(); drawPreview(); };
     $('#forgeSaved').addEventListener('click', async e => {
       const b = e.target.closest('button');
       if (!b) return;
@@ -430,10 +515,12 @@
     $('#forgePlay').onclick = () => {
       save();
       S.settings = { ...S.settings, world: JSON.parse(JSON.stringify(F)) };
+      if (F.starts.length) S.solo.bots = Math.max(1, Math.min(5, F.starts.length - 1));
+      renderSoloOpts();
       menuPanel('solo');
     };
 
-    return { open() { renderOpts(); renderSaved(); drawPreview(); } };
+    return { open() { renderOpts(); renderTools(); renderSaved(); drawPreview(); } };
   })();
 
   // ---------- Lobby ----------
@@ -1030,7 +1117,7 @@
   }
 
   // Divisionen wie bei Hearts of Iron: eine Figur je Division (stärkste Einheit) auf einem Sockel mit der Stärke
-  const FIG_W = { w: 12, a: 12, p: 12, k: 17, c: 17 };
+  const FIG_W = { w: 12, a: 12, p: 12, k: 17, c: 17, wo: 17, tr: 14, dr: 24 };
   function renderUnits() {
     const st = S.state, C = st.cells;
     let html = '';
@@ -1153,7 +1240,8 @@
     if (!c) { box.hidden = true; return; }
     const T = K.TERRAIN[c.terrain];
     const y = K.provinceYield(st, c);
-    const kind = c.capital ? '👑 Hauptstadt' : c.building ? K.BUILDINGS[c.building].name : c.hut ? '🛖 Dorf' : '';
+    const L = c.lair && K.LAIRS[c.lair];
+    const kind = L ? `${L.icon} ${L.name}` : c.capital ? '👑 Hauptstadt' : c.throne ? '👑 Thronstadt' : c.building ? K.BUILDINGS[c.building].name : c.hut ? '🛖 Dorf' : '';
     const chips = [T.name, `${K.PSIZE[c.sz].name}e Provinz`, c.river ? '🏞️ Fluss' : '', kind, `🛡️ ×${K.defMult(c, false).toFixed(2).replace(/\.?0+$/, '')}`]
       .filter(Boolean).map(t => `<span class="chip">${t}</span>`).join('');
     const mine = c.owner === S.me && st.turn === S.me;
@@ -1171,6 +1259,8 @@
       <div class="chips">${chips}</div>
       <div class="tag">Ertrag pro Runde: ${coin('+' + y.gold)}${y.sci ? ' ' + scroll('+' + y.sci) : ''}${c.owner < 0 ? ' (nach Eroberung)' : ''}</div>
       ${c.hut ? '<div class="tag">Erobern bringt Gold oder Wissen</div>' : ''}
+      ${L ? `<div class="treasure">💰 Schatz: +${L.gold} Gold, +${L.sci} Wissen – besiege die Monster!</div>` : ''}
+      ${c.owner >= 0 ? `<div class="tag">Truppen ${K.total(c.u)} / ${K.capOf(c)} (Platz in der Provinz)</div>` : ''}
       ${divs}${extra}`;
     box.hidden = false;
   }
@@ -1248,7 +1338,7 @@
       };
       status = `Tippe auf deine Hauptstadt 👑${K.hasTech(st, S.me, 'masonry') ? ' oder eine Festung' : ''} – neue Truppen bilden eine eigene Division`;
       right = `<div class="amount"><button data-amt="1" class="${S.amount === 1 ? 'on' : ''}">×1</button><button data-amt="5" class="${S.amount === 5 ? 'on' : ''}">×5</button></div>`;
-      shop = `<div class="shop">${K.TYPES.map(btn).join('')}</div>`;
+      shop = `<div class="shop">${K.TYPES.filter(t => !K.UNITS[t].monster).map(btn).join('')}</div>`;
     } else if (S.mode === 'build') {
       const btn = b => {
         const B = K.BUILDINGS[b], locked = B.tech && !K.hasTech(st, S.me, B.tech);
@@ -1379,8 +1469,8 @@
       <div class="chance ${cls}"><div>Angriff <b>${o.A.toFixed(1)}</b> gegen Verteidigung <b>${o.D.toFixed(1)}</b>
         <span class="tag">(Verteidigung ×${o.mult.toFixed(2).replace(/\.?0+$/, '')}${o.siege ? ', Katapulte ignorieren Festungen' : ''})</span></div>
         <div class="bar"><i style="width:${p}%"></i></div><div>Siegchance <span class="pct">${p} %</span></div></div>
-      <p class="tag">Gewinnst du, ziehen die Divisionen in die Provinz ein. Verlierst du, sind alle angreifenden Divisionen verloren.</p>
-      <div class="row end"><button data-pclose>Abbrechen</button><button data-pgo class="danger" ${K.total(force) ? '' : 'disabled'}>⚔️ Angreifen · ${p} %</button></div>
+      <p class="tag ${K.total(force) > K.capOf(t) ? 'warn' : ''}">Höchstens <b>${K.capOf(t)}</b> Truppen passen nach ${esc(t.name)} (gewählt: ${K.total(force)}). Gewinnst du, ziehen die Divisionen ein. Verlierst du, sind alle angreifenden Divisionen verloren.</p>
+      <div class="row end"><button data-pclose>Abbrechen</button><button data-pgo class="danger" ${K.total(force) && K.total(force) <= K.capOf(t) ? '' : 'disabled'}>⚔️ Angreifen · ${p} %</button></div>
     </div>`;
   }
 
@@ -1528,7 +1618,7 @@
   });
 
   function openHelp() {
-    const units = K.TYPES.map(t => {
+    const units = K.TYPES.filter(t => !K.UNITS[t].monster).map(t => {
       const u = K.UNITS[t];
       return `<tr><td><svg class="ico"><use href="#u-${t}"/></svg> ${u.name}</td><td>${u.cost}</td><td>${u.atk}</td><td>${u.def}</td><td>${u.mp}</td>
         <td>${u.tech ? K.TECHS[u.tech].name : '–'}${u.note ? `<br><small>${u.note}</small>` : ''}</td></tr>`;
@@ -1583,6 +1673,11 @@
       <p><b>Leertaste</b> Zug beenden · <b>1 / 2 / 3</b> Ausbilden / Bauen / Armeen · <b>R</b> Forschung · <b>H</b> Hilfe · <b>F</b> ganze Karte · <b>Esc</b> abbrechen · <b>Enter</b> Angriff bestätigen</p>
       <h3>Schwierigkeit</h3>
       <p>Die KI „Schwer“ greift aus mehreren Provinzen gleichzeitig an und bekommt wie in Civilization +20 % Gold und Wissen.</p>
+      <h3>Truppenlimit</h3>
+      <p>In jede Provinz passen nur begrenzt viele Truppen: klein 8, mittel 10, groß 12 – Hauptstädte und Festungen +6. Das gilt beim Ausbilden, Marschieren und Angreifen.</p>
+      <h3>Monster</h3>
+      <p>${Object.values(K.LAIRS).map(L => `<b>${L.icon} ${L.name}</b>: Schatz +${L.gold} Gold, +${L.sci} Wissen`).join('<br>')}<br>
+        Monster bleiben in ihrem Hort. Wer sie besiegt, bekommt den Schatz und die Provinz. Wölfe sind leicht, Trolle zäh (Verteidigung 5), Drachen sehr stark (Verteidigung 16).</p>
       <h3>Spielmodi</h3>
       <p><b>⚔️ Klassisch:</b> Vernichte alle Gegner – oder hab nach 40 Runden die meisten Punkte.<br>
         <b>👑 Thronkampf:</b> In der Mitte liegt die befestigte Thronstadt. Wer sie zu Beginn seines Zuges hält, bekommt eine Krone – 5 Kronen gewinnen.<br>
