@@ -16,7 +16,7 @@
     return { ...B, icon: b === 'fort' ? '#castle' : '#b-' + b, where: B.on.length === 4 ? 'überall' : B.on.map(t => K.TERRAIN[t].name).join(', ') };
   }
   const newSeed = () => (Math.random() * 2 ** 32) >>> 0;
-  const APP_VERSION = '17';
+  const APP_VERSION = '18';
   // nur zum Testen: mit ?debug in der Adresse ist der Spielzustand in der Konsole erreichbar
   const DEBUG = new URLSearchParams(location.search).has('debug');
 
@@ -827,19 +827,21 @@
   const SND = { recruit: 'recruit', build: 'build', research: 'research', demolish: null, end: 'click', propose: 'click', accept: 'click', break: 'lose', split: 'select', merge: 'select' };
 
   let view = { x: 0, y: 0, w: 100, h: 100 };
+  const dockSide = () => { const d = $('#actionbar').getBoundingClientRect(); return d.width && d.width < window.innerWidth * 0.6 && d.top < window.innerHeight / 3; };
   function applyView() { svgEl().setAttribute('viewBox', `${view.x} ${view.y} ${view.w} ${view.h}`); }
   function fitView() {
     if (!S.state) return;
     const geo = S.state.geo, r = $('#mapwrap').getBoundingClientRect();
     if (!r.width) return;
-    const top = r.width < 860 ? 110 : 64, bottom = ($('#actionbar').offsetHeight || 110) + 20;
-    const right = r.width < 860 ? 0 : ($('#side').offsetWidth || 0) + 24;
+    const side = dockSide();
+    const top = side ? 56 : r.width < 860 ? 110 : 64, bottom = side ? 10 : ($('#actionbar').offsetHeight || 110) + 20;
+    const right = side ? ($('#actionbar').offsetWidth || 0) + 8 : r.width < 860 ? 0 : ($('#side').offsetWidth || 0) + 24;
     const availH = Math.max(120, r.height - top - bottom), availW = Math.max(200, r.width - right);
     let scale = Math.min(availW / geo.W, availH / geo.H) * 0.97;
     let cx = geo.W / 2, cy = geo.H / 2;
     // Hochformat (Handy): nicht die winzige Gesamtkarte zeigen, sondern auf die eigene Hauptstadt zoomen
     const cap = S.state.cells.find(c => c.capital && c.owner === S.me);
-    if (r.width < 600 && cap) { scale = Math.min(availH / geo.H, availW / (geo.W * 0.5)); cx = cap.lx; cy = cap.ly; }
+    if ((r.width < 600 || side) && cap) { scale = Math.min(availH / geo.H, availW / (geo.W * 0.5)); cx = cap.lx; cy = cap.ly; }
     view.w = r.width / scale; view.h = r.height / scale;
     view.x = cx - (availW / 2) / scale;
     view.y = cy - (top + availH / 2) / scale;
@@ -853,6 +855,25 @@
     view.h = view.h * (w / view.w); view.w = w;
     view.x = wx - fx * view.w; view.y = wy - fy * view.h;
     applyView();
+  }
+  // Handy: ausgewählte Provinz nicht unter HUD, Infofeld oder Leiste verstecken
+  function keepVisible(i) {
+    const r = $('#mapwrap').getBoundingClientRect(), c = S.state.cells[i];
+    if (!r.width || r.width >= 860 || !c) return;
+    const side = dockSide(), top = side ? 56 : 110, bottom = side ? r.height - 12 : r.height - ($('#actionbar').offsetHeight || 0) - 12;
+    const rightEdge = side ? $('#actionbar').getBoundingClientRect().left : r.width;
+    const sy = (c.ly - view.y) / view.h * r.height, sx = (c.lx - view.x) / view.w * r.width;
+    let dy = 0, dx = 0;
+    if (sy < top + 30 || sy > bottom - 30) dy = sy - (top + bottom) / 2;
+    if (sx < 30 || sx > rightEdge - 30) dx = sx - rightEdge / 2;
+    if (!dx && !dy) return;
+    const fromX = view.x, fromY = view.y, toX = view.x + dx / r.width * view.w, toY = view.y + dy / r.height * view.h, t0 = performance.now();
+    const step = now => {
+      const k = Math.min(1, (now - t0) / 280), e = 1 - Math.pow(1 - k, 3);
+      view.x = fromX + (toX - fromX) * e; view.y = fromY + (toY - fromY) * e; applyView();
+      if (k < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
   }
   function toWorld(sx, sy) {
     const r = $('#mapwrap').getBoundingClientRect();
@@ -892,7 +913,7 @@
     wrap.addEventListener('pointerdown', e => {
       if (e.button === 2) return;
       pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      wrap.setPointerCapture(e.pointerId);
+      try { wrap.setPointerCapture(e.pointerId); } catch (_) {}
       const ctr = e.target.closest && e.target.closest('.ctr');
       if (pts.size === 1 && ctr && ctr.dataset.d && myTurn() && S.state.cells[+ctr.dataset.i].owner === S.me) {
         unitDrag = { from: +ctr.dataset.i, div: +ctr.dataset.d, sx: e.clientX, sy: e.clientY, moved: false, add: e.ctrlKey || e.shiftKey || e.metaKey };
@@ -999,6 +1020,9 @@
     renderHud();
     renderBar();
     document.documentElement.style.setProperty('--dock-h', ($('#actionbar').offsetHeight || 0) + 'px');
+    document.body.classList.toggle('armysel', S.mode === 'army' && S.sel >= 0);
+    if (S.sel >= 0 && S.sel !== S.focused) { S.focused = S.sel; keepVisible(S.sel); }
+    if (S.sel < 0) S.focused = -1;
     renderPlayers();
     renderLog();
     renderChat();
@@ -1628,7 +1652,7 @@
     for (const id of ['btnMusic', 'mMusic']) $('#' + id).classList.toggle('off', !Sound.music);
     for (const id of ['btnSfx', 'mSfx']) $('#' + id).classList.toggle('off', !Sound.sfx);
     $('#btnSfx').textContent = Sound.sfx ? '🔊' : '🔈';
-    $('#mSfx').textContent = (Sound.sfx ? '🔊' : '🔈') + ' Effekte';
+    $('#mSfx').innerHTML = (Sound.sfx ? '🔊' : '🔈') + ' <span>Effekte</span>';
   }
   for (const id of ['btnMusic', 'mMusic']) $('#' + id).onclick = () => { Sound.toggleMusic(); renderSoundButtons(); };
   for (const id of ['btnSfx', 'mSfx']) $('#' + id).onclick = () => { Sound.toggleSfx(); renderSoundButtons(); Sound.play('click'); };
