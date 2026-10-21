@@ -794,3 +794,11 @@ kbd { display: inline-block; padding: .05rem .45rem; border-radius: 6px; border:
 .minigame canvas { width: 100%; max-width: 380px; aspect-ratio: 360 / 260; border-radius: 12px; touch-action: none; cursor: crosshair; display: block; margin: .3rem auto; box-shadow: 0 6px 18px rgba(0, 0, 0, .4); }
 .minibar { display: flex; justify-content: space-between; align-items: center; gap: .5rem; flex-wrap: wrap; font-size: .85rem; }
 #bMini { white-space: nowrap; }
+
+/* ===== v23: Drachenflug ===== */
+.modal.minigame { max-width: 760px; width: 100%; }
+.minigame .mhead { gap: .6rem; }
+.minigame .mhead .tag { margin-left: auto; }
+.dgwrap { width: 100%; }
+.dgwrap canvas { display: block; width: 100%; max-width: none; aspect-ratio: auto; margin: 0; border-radius: 12px; touch-action: none; cursor: pointer; box-shadow: 0 8px 24px rgba(0, 0, 0, .5); user-select: none; -webkit-user-select: none; }
+#bMini { white-space: nowrap; border-color: var(--gold); }

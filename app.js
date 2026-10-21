@@ -17,7 +17,7 @@
     return { ...B, icon: b === 'fort' ? '#castle' : '#b-' + b, where: B.coast ? 'an der Küste' : B.on.length >= 5 ? 'überall' : B.on.map(t => K.TERRAIN[t].name).join(', ') };
   }
   const newSeed = () => (Math.random() * 2 ** 32) >>> 0;
-  const APP_VERSION = '22';
+  const APP_VERSION = '23';
   // nur zum Testen: mit ?debug in der Adresse ist der Spielzustand in der Konsole erreichbar
   const DEBUG = new URLSearchParams(location.search).has('debug');
 
@@ -46,7 +46,7 @@
     .map(k => `<span class="${pl && (pl[k] || 0) < need[k] ? 'miss' : ''}">${need[k]}<i class="ri">${K.RES[k].icon}</i></span>`).join('')}</em>`;
   const priceText = (gold, need) => [gold ? gold + ' Gold' : '', ...K.RKEYS.filter(k => need && need[k]).map(k => `${need[k]} ${K.RES[k].name}`)].filter(Boolean).join(', ');
 
-  if (DEBUG) window.__kingdoms = { S, render: () => render() };
+  if (DEBUG) window.__kingdoms = { S, render: () => render(), mini: () => Mini };
 
   function show(id) { document.querySelectorAll('.screen').forEach(e => { e.hidden = e.id !== id; }); const m = document.querySelector('#menuSound'); if (m) m.hidden = id === 'game'; }
 
@@ -1737,7 +1737,7 @@
     }
     if (!mt) { status = `⏳ ${pName(st.turn)} ist am Zug – schau dich schon um und plane deinen nächsten Zug.`; right = ''; }
     bar.innerHTML = `${tabs}<span class="status">${status}</span>
-      <div class="right">${right}${mt && S.mode === 'army' ? (() => { const n = st.cells.filter(c => c.owner === S.me && readyDivs(c).length).length; return n ? `<button id="bNext" title="Nächste bereite Armee (Taste N)">⏭ ${n}</button>` : ''; })() : ''}${mt ? `<button id="bEnd" class="endturn ${S.mode === 'army' ? 'primary' : ''}" title="Leertaste">Zug beenden ➜</button>` : '<button id="bMini" title="Kleines Bogenschieß-Spiel, bis du dran bist">🎯 Minispiel</button>'}</div>${shop}`;
+      <div class="right">${right}${mt && S.mode === 'army' ? (() => { const n = st.cells.filter(c => c.owner === S.me && readyDivs(c).length).length; return n ? `<button id="bNext" title="Nächste bereite Armee (Taste N)">⏭ ${n}</button>` : ''; })() : ''}${mt ? `<button id="bEnd" class="endturn ${S.mode === 'army' ? 'primary' : ''}" title="Leertaste">Zug beenden ➜</button>` : '<button id="bMini" title="Drachenflug spielen, bis du dran bist">🐉 Drachenflug</button>'}</div>${shop}`;
   }
 
   $('#actionbar').onclick = e => {
@@ -1962,7 +1962,7 @@
   }
 
   document.addEventListener('keydown', e => {
-    if ((e.target.matches && e.target.matches('input, textarea')) || $('#game').hidden || !S.state) return;
+    if ((e.target.matches && e.target.matches('input, textarea')) || $('#game').hidden || !S.state || !$('#mini').hidden) return;
     const k = e.key;
     if (k === 'Escape') {
       if (!$('#stats').hidden) $('#stats').hidden = true;
@@ -2059,114 +2059,367 @@
     S.propKey = key;
   }
 
-  // ---------- Minispiel für die Wartezeit: Bogenschießen ----------
-  // 10 Pfeile, die Scheibe wandert, der Wind treibt die Pfeile ab. Pfeile fliegen eine Weile – man muss vorhalten.
+  // ---------- Minispiel für die Wartezeit: Drachenflug ----------
+  // Ein Drache in deiner Reichsfarbe fliegt durchs Land und speit von selbst Feuer.
+  // Gedrückt halten (Maus, Finger, Leertaste oder ↑) = steigen, loslassen = sinken.
   const Mini = (() => {
     const o = $('#mini');
-    let cv, g, raf = 0, st = null;
-    const W = 360, H = 260, BOW = [W / 2, H - 14];
-    const best = () => +(store.get('kingdoms-mini') || 0);
+    const W = 640, H = 360, GROUND = H - 34;
+    let cv, g, raf = 0, G = null, hold = false, dpr = 1;
+    const best = () => +(store.get('kingdoms-dragon') || 0);
     const isOpen = () => !o.hidden;
+    const rand = (a, b) => a + Math.random() * (b - a);
+    const myColor = () => (S.state && S.state.players[S.me] ? S.state.players[S.me].color : PROFILE.color) || '#e5484d';
+
     function open() {
-      o.innerHTML = `<div class="modal center minigame">
-        <div class="mhead"><h2>🎯 Bogenschießen</h2><button data-mclose class="ghost" title="Schließen">✕</button></div>
-        <p class="tag">Triff die wandernde Scheibe! Der Pfeil braucht etwas Zeit – halte vor. Achte auf den Wind.</p>
-        <canvas width="${W}" height="${H}"></canvas>
-        <div class="minibar"><span id="miniInfo"></span><button id="miniGo" class="primary">Neue Runde</button></div></div>`;
+      o.innerHTML = `<div class="modal minigame">
+        <div class="mhead"><h2>🐉 Drachenflug</h2><span class="tag" id="dgBest"></span><button data-mclose class="ghost" title="Schließen">✕</button></div>
+        <div class="dgwrap"><canvas></canvas></div>
+        <div class="minibar"><span class="tag">Halten = steigen · Loslassen = sinken · Feuer kommt von selbst</span>
+          <span><button id="dgBrag" hidden>📣 Im Chat prahlen</button></span></div></div>`;
       o.hidden = false;
       cv = o.querySelector('canvas'); g = cv.getContext('2d');
-      cv.addEventListener('pointerdown', shoot);
-      reset();
-      cancelAnimationFrame(raf); raf = requestAnimationFrame(loop);
-    }
-    function close() { o.hidden = true; cancelAnimationFrame(raf); o.innerHTML = ''; st = null; }
-    function reset() {
-      st = { t: 0, arrows: 10, score: 0, flying: [], stuck: [], pops: [], wind: (Math.random() - 0.5) * 60, speed: 1, last: performance.now(), over: false };
-      info();
-    }
-    const target = t => {
-      const sp = st.speed;
-      return [W / 2 + Math.sin(t * 0.9 * sp) * (W / 2 - 50), 70 + Math.sin(t * 1.7 * sp + 1) * 34];
-    };
-    function info() {
-      const el = $('#miniInfo');
-      if (el) el.innerHTML = `🏹 ${st.arrows} Pfeile · <b>${st.score}</b> Punkte · Rekord ${Math.max(best(), st.score)} · Wind ${st.wind > 0 ? '→' : '←'} ${Math.abs(Math.round(st.wind / 10))}`;
-    }
-    function shoot(e) {
-      if (!st || st.arrows <= 0) return;
-      const r = cv.getBoundingClientRect();
-      const x = (e.clientX - r.left) * W / r.width, y = (e.clientY - r.top) * H / r.height;
-      st.arrows--;
-      st.flying.push({ x0: BOW[0], y0: BOW[1], x1: x, y1: y, t0: st.t, dur: 0.45 + Math.hypot(x - BOW[0], y - BOW[1]) / 900 });
-      Sound.play('volley');
-      info();
-    }
-    function loop(now) {
-      if (!st || o.hidden) return;
-      const dt = Math.min(0.05, (now - st.last) / 1000);
-      st.last = now; st.t += dt;
-      st.speed = 1 + (10 - st.arrows) * 0.08;
-      // Pfeile landen
-      for (const a of st.flying.slice()) {
-        if (st.t - a.t0 < a.dur) continue;
-        st.flying.splice(st.flying.indexOf(a), 1);
-        const lx = a.x1 + st.wind * a.dur * 0.6, ly = a.y1;
-        const [tx, ty] = target(st.t), d = Math.hypot(lx - tx, ly - ty);
-        const pts = d < 6 ? 10 : d < 13 ? 7 : d < 21 ? 5 : d < 30 ? 2 : 0;
-        st.score += pts;
-        if (pts) st.stuck.push({ dx: lx - tx, dy: ly - ty });
-        st.pops.push({ x: lx, y: ly, txt: pts ? `+${pts}` : 'daneben', t: st.t, good: pts >= 7 });
-        Sound.play(pts === 10 ? 'win' : pts ? 'click' : 'error');
-        info();
-      }
-      if (st.arrows <= 0 && !st.flying.length && !st.over) {
-        st.over = true;
-        const rec = st.score > best();
-        if (rec) store.set('kingdoms-mini', String(st.score));
-        st.pops.push({ x: W / 2, y: H / 2, txt: rec ? `🏆 Neuer Rekord: ${st.score}!` : `Fertig: ${st.score} Punkte`, t: st.t, good: true, big: true });
-        if (rec) Sound.play('victory');
-        info();
-      }
-      draw();
+      fit();
+      const down = e => { e.preventDefault(); hold = true; if (G.state !== 'play' && canRestart()) start(); };
+      const up = () => { hold = false; };
+      cv.addEventListener('pointerdown', down);
+      cv.addEventListener('pointerup', up);
+      cv.addEventListener('pointercancel', up);
+      cv.addEventListener('pointerleave', up);
+      G = fresh('intro');
+      $('#dgBest').textContent = `🏆 Rekord ${best()}`;
+      cancelAnimationFrame(raf);
+      let last = performance.now();
+      const loop = now => {
+        if (o.hidden || !G) return;
+        const dt = Math.min(0.033, (now - last) / 1000);
+        last = now;
+        step(dt); draw();
+        raf = requestAnimationFrame(loop);
+      };
       raf = requestAnimationFrame(loop);
     }
-    function draw() {
-      g.clearRect(0, 0, W, H);
-      const sky = g.createLinearGradient(0, 0, 0, H);
-      sky.addColorStop(0, '#2b5876'); sky.addColorStop(0.65, '#6aa2b8'); sky.addColorStop(0.66, '#5d8a3a'); sky.addColorStop(1, '#3f6526');
-      g.fillStyle = sky; g.fillRect(0, 0, W, H);
-      // Windfahne
-      g.save(); g.translate(26, 30); g.strokeStyle = '#3a2a1a'; g.lineWidth = 2; g.beginPath(); g.moveTo(0, 0); g.lineTo(0, 30); g.stroke();
-      g.fillStyle = '#e5484d'; g.beginPath(); g.moveTo(0, 0); g.lineTo(st.wind / 2, 5); g.lineTo(0, 10); g.fill(); g.restore();
-      // Scheibe
-      const [tx, ty] = target(st.t);
-      [[30, '#f3ead2'], [21, '#e5484d'], [13, '#f3ead2'], [6, '#e8b64c']].forEach(([r, c]) => { g.fillStyle = c; g.beginPath(); g.arc(tx, ty, r, 0, 7); g.fill(); });
-      g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 1; g.beginPath(); g.arc(tx, ty, 30, 0, 7); g.stroke();
-      for (const s of st.stuck) { g.strokeStyle = '#4a2e14'; g.lineWidth = 2; g.beginPath(); g.moveTo(tx + s.dx, ty + s.dy); g.lineTo(tx + s.dx + 4, ty + s.dy + 9); g.stroke(); }
-      // fliegende Pfeile
-      for (const a of st.flying) {
-        const k = (st.t - a.t0) / a.dur, x = a.x0 + (a.x1 + st.wind * a.dur * 0.6 - a.x0) * k, y = a.y0 + (a.y1 - a.y0) * k - Math.sin(k * Math.PI) * 30;
-        const ang = Math.atan2(a.y1 - a.y0, a.x1 - a.x0);
-        g.save(); g.translate(x, y); g.rotate(ang);
-        g.strokeStyle = '#5a3d22'; g.lineWidth = 2; g.beginPath(); g.moveTo(-12, 0); g.lineTo(6, 0); g.stroke();
-        g.fillStyle = '#d6dbe0'; g.beginPath(); g.moveTo(9, 0); g.lineTo(4, -3); g.lineTo(4, 3); g.fill(); g.restore();
-      }
-      // Bogen
-      g.strokeStyle = '#7a4a24'; g.lineWidth = 4; g.beginPath(); g.arc(BOW[0], BOW[1] + 16, 26, Math.PI * 1.15, Math.PI * 1.85); g.stroke();
-      // Treffer-Anzeigen
-      st.pops = st.pops.filter(p => st.t - p.t < (p.big ? 99 : 1.2));
-      for (const p of st.pops) {
-        g.globalAlpha = p.big ? 1 : Math.max(0, 1 - (st.t - p.t) / 1.2);
-        g.font = `800 ${p.big ? 22 : 15}px Georgia, serif`; g.textAlign = 'center';
-        g.lineWidth = 4; g.strokeStyle = 'rgba(0,0,0,.6)'; g.strokeText(p.txt, p.x, p.y - (p.big ? 0 : (st.t - p.t) * 30));
-        g.fillStyle = p.good ? '#ffe2a0' : '#fff'; g.fillText(p.txt, p.x, p.y - (p.big ? 0 : (st.t - p.t) * 30));
-        g.globalAlpha = 1;
+    function fit() {
+      dpr = Math.min(2, window.devicePixelRatio || 1);
+      const w = cv.parentElement.clientWidth;
+      cv.style.width = w + 'px'; cv.style.height = (w * H / W) + 'px';
+      cv.width = Math.round(w * dpr); cv.height = Math.round(w * H / W * dpr);
+    }
+    window.addEventListener('resize', () => { if (isOpen() && cv) fit(); });
+    function close() { o.hidden = true; cancelAnimationFrame(raf); o.innerHTML = ''; G = null; hold = false; }
+
+    function fresh(state) {
+      return { state, t: 0, dist: 0, speed: 170, score: 0, lives: 3, inv: 0, combo: 0, comboT: 0, shake: 0,
+        dr: { x: 120, y: H / 2, vy: 0, fireT: 0 }, shots: [], foes: [], bolts: [], items: [], parts: [], texts: [],
+        spawn: { bird: 1.2, tower: 3.5, balloon: 7, wyvern: 14, coin: 2 }, power: { triple: 0, shield: 0, magnet: 0 },
+        clouds: Array.from({ length: 6 }, () => ({ x: rand(0, W), y: rand(20, 150), s: rand(0.6, 1.4) })) };
+    }
+    function start() {
+      G = fresh('play');
+      $('#dgBrag').hidden = true;
+      Sound.play('select');
+    }
+
+    // ---------- Partikel und Texte ----------
+    function burst(x, y, n, cols, sp = 160, life = 0.6, size = 3) {
+      for (let k = 0; k < n; k++) {
+        const a = rand(0, Math.PI * 2), v = rand(sp * 0.3, sp);
+        G.parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life, max: life, c: cols[k % cols.length], r: rand(size * 0.5, size * 1.4) });
       }
     }
-    o.addEventListener('click', e => {
-      if (e.target === o || e.target.closest('[data-mclose]')) close();
-      else if (e.target.id === 'miniGo') reset();
-    });
+    const say = (x, y, txt, c = '#ffe2a0', big = false) => G.texts.push({ x, y, txt, c, t: 0, big });
+
+    // ---------- Spiel-Logik ----------
+    function hurt() {
+      if (G.inv > 0) return;
+      if (G.power.shield > 0) { G.power.shield = 0; G.inv = 0.8; burst(G.dr.x, G.dr.y, 18, ['#8fd0ff', '#fff']); say(G.dr.x, G.dr.y - 26, 'Schild weg!', '#8fd0ff'); return; }
+      G.lives--; G.inv = 1.4; G.shake = 0.35; G.combo = 0;
+      burst(G.dr.x, G.dr.y, 26, ['#ff5a5f', '#ffb347', '#fff']);
+      Sound.play('lose');
+      if (G.lives <= 0) gameOver();
+    }
+    const canRestart = () => G.state !== 'over' || G.t - G.overAt > 0.9;
+    function gameOver() {
+      G.state = 'over'; G.overAt = G.t;
+      const rec = G.score > best();
+      if (rec) store.set('kingdoms-dragon', String(G.score));
+      G.rec = rec;
+      $('#dgBest').textContent = `🏆 Rekord ${best()}`;
+      const brag = $('#dgBrag');
+      if (brag && (S.role === 'guest' || S.role === 'host')) {
+        brag.hidden = false;
+        brag.onclick = () => { sendChat(`🐉 ${G.score} Punkte im Drachenflug${rec ? ' – neuer Rekord!' : '!'}`); brag.hidden = true; toast('Angeber! 😎'); };
+      }
+      Sound.play(rec ? 'victory' : 'defeat');
+    }
+    function kill(f) {
+      f.dead = true;
+      G.combo = G.comboT > 0 ? G.combo + 1 : 1; G.comboT = 1.6;
+      const mult = Math.min(5, G.combo), pts = f.pts * mult;
+      G.score += pts;
+      say(f.x, f.y - 20, mult > 1 ? `+${pts} ×${mult}` : `+${pts}`, mult > 2 ? '#ff9a3c' : '#ffe2a0', mult > 2);
+      burst(f.x, f.y, f.big ? 40 : 18, ['#ffb347', '#ff6a2a', '#ffe2a0', '#555'], f.big ? 240 : 160, 0.7, f.big ? 4 : 3);
+      if (f.big) { G.shake = 0.25; Sound.play('battle'); } else Sound.play('click');
+      // Beute
+      const r = Math.random();
+      if (r < 0.1) G.items.push({ x: f.x, y: f.y, kind: ['triple', 'shield', 'magnet', 'heart'][Math.floor(Math.random() * 4)], vy: -40 });
+      else if (r < 0.55 || f.big) for (let k = 0; k < (f.big ? 6 : 2); k++) G.items.push({ x: f.x + rand(-14, 14), y: f.y + rand(-10, 10), kind: k === 0 && f.big ? 'gem' : 'coin', vy: rand(-60, 0) });
+    }
+    function step(dt) {
+      // schwebende Wolken auch im Startbild
+      for (const c of G.clouds) { c.x -= (G.state === 'play' ? G.speed : 40) * 0.15 * c.s * dt; if (c.x < -80) { c.x = W + 60; c.y = rand(20, 150); } }
+      G.t += dt;
+      for (const p of G.parts) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 220 * dt; p.life -= dt; }
+      G.parts = G.parts.filter(p => p.life > 0);
+      for (const t of G.texts) { t.t += dt; t.y -= 30 * dt; }
+      G.texts = G.texts.filter(t => t.t < (t.big ? 1.4 : 0.9));
+      if (G.state !== 'play') { G.dr.y = H / 2 + Math.sin(G.t * 2) * 18; return; }
+
+      const d = G.dr;
+      G.dist += G.speed * dt;
+      G.speed = Math.min(380, 170 + G.dist / 45);
+      const lvl = 1 + G.dist / 2500;
+      G.shake = Math.max(0, G.shake - dt); G.inv = Math.max(0, G.inv - dt); G.comboT = Math.max(0, G.comboT - dt);
+      for (const k in G.power) G.power[k] = Math.max(0, G.power[k] - dt);
+      G.score += Math.round(G.speed * dt * 0.05);
+
+      // Drache: halten = steigen
+      d.vy += (hold ? -980 : 720) * dt;
+      d.vy = Math.max(-330, Math.min(380, d.vy));
+      d.y += d.vy * dt;
+      if (d.y < 18) { d.y = 18; d.vy = 0; }
+      if (d.y > GROUND - 14) { d.y = GROUND - 14; d.vy = 0; }
+      // Feuer speien
+      d.fireT -= dt;
+      if (d.fireT <= 0) {
+        d.fireT = 0.26;
+        const angs = G.power.triple > 0 ? [-0.22, 0, 0.22] : [0];
+        for (const a of angs) G.shots.push({ x: d.x + 30, y: d.y - 4, vx: Math.cos(a) * 520, vy: Math.sin(a) * 520 + d.vy * 0.2, life: 1.2 });
+      }
+      for (const s of G.shots) {
+        s.x += s.vx * dt; s.y += s.vy * dt; s.life -= dt;
+        if (Math.random() < 0.6) G.parts.push({ x: s.x - 6, y: s.y + rand(-2, 2), vx: -60, vy: rand(-20, 20), life: 0.25, max: 0.25, c: Math.random() < 0.5 ? '#ffb347' : '#ff6a2a', r: rand(2, 4) });
+      }
+
+      // Gegner erscheinen
+      const sp = G.spawn;
+      for (const k in sp) sp[k] -= dt;
+      if (sp.bird <= 0) { sp.bird = rand(0.7, 1.6) / lvl; const y = rand(30, GROUND - 90); for (let k = 0; k < (Math.random() < 0.3 ? 3 : 1); k++) G.foes.push({ type: 'bird', x: W + 20 + k * 26, y: y + k * 14, y0: y + k * 14, hp: 1, r: 12, pts: 10, ph: rand(0, 6) }); }
+      if (sp.tower <= 0) { sp.tower = rand(2.4, 4.2) / Math.sqrt(lvl); const h = rand(70, 150 + Math.min(60, lvl * 12)); G.foes.push({ type: 'tower', x: W + 40, y: GROUND - h / 2, h, hp: 7, r: 18, pts: 40, shoot: rand(0.6, 1.4), big: true }); }
+      if (sp.balloon <= 0) { sp.balloon = rand(5, 9) / lvl; G.foes.push({ type: 'balloon', x: W + 30, y: rand(50, 170), hp: 4, r: 22, pts: 30, ph: rand(0, 6), big: true }); }
+      if (sp.wyvern <= 0 && G.dist > 1800) { sp.wyvern = rand(7, 12) / Math.sqrt(lvl); G.foes.push({ type: 'wyvern', x: W + 40, y: rand(60, GROUND - 80), hp: 6, r: 20, pts: 60, shoot: 1.2, ph: rand(0, 6), big: true }); }
+      if (sp.coin <= 0) { sp.coin = rand(1.5, 3); const y = rand(40, GROUND - 40); for (let k = 0; k < 5; k++) G.items.push({ x: W + 20 + k * 22, y: y + Math.sin(k) * 12, kind: 'coin', vy: 0, fixed: true }); }
+
+      // Gegner bewegen
+      for (const f of G.foes) {
+        if (f.type === 'bird') { f.x -= (G.speed + 60) * dt; f.ph += dt * 6; f.y = f.y0 + Math.sin(f.ph) * 10; }
+        else if (f.type === 'tower') {
+          f.x -= G.speed * dt; f.shoot -= dt;
+          if (f.shoot <= 0 && f.x < W - 20 && f.x > d.x + 40) { f.shoot = rand(1.1, 1.8) / Math.sqrt(lvl); const tx = f.x - 4, ty = GROUND - f.h - 10, a = Math.atan2(d.y - ty, d.x - tx); G.bolts.push({ x: tx, y: ty, vx: Math.cos(a) * 260, vy: Math.sin(a) * 260, kind: 'arrow' }); }
+        } else if (f.type === 'balloon') { f.x -= G.speed * 0.55 * dt; f.ph += dt * 2; f.y += Math.sin(f.ph) * 12 * dt; }
+        else if (f.type === 'wyvern') {
+          f.x -= (G.speed * 0.6) * dt; f.ph += dt * 2.4; f.y += (d.y - f.y) * 0.6 * dt + Math.sin(f.ph) * 40 * dt; f.shoot -= dt;
+          if (f.shoot <= 0 && f.x < W - 30) { f.shoot = rand(1.3, 2.2); G.bolts.push({ x: f.x - 20, y: f.y, vx: -320, vy: (d.y - f.y) * 0.8, kind: 'fire' }); }
+        }
+      }
+      // Treffer durch Feuer
+      for (const s of G.shots) for (const f of G.foes) {
+        if (f.dead || s.life <= 0) continue;
+        const hit = f.type === 'tower' ? (s.x > f.x - 16 && s.x < f.x + 16 && s.y > GROUND - f.h - 14) : Math.hypot(s.x - f.x, s.y - f.y) < f.r + 5;
+        if (hit) { s.life = 0; f.hp--; f.flash = 0.08; burst(s.x, s.y, 5, ['#ffb347', '#fff'], 90, 0.3, 2); if (f.hp <= 0) kill(f); }
+      }
+      G.shots = G.shots.filter(s => s.life > 0 && s.x < W + 20 && s.y > -20 && s.y < H);
+      // Zusammenstöße mit dem Drachen
+      for (const f of G.foes) {
+        if (f.dead) continue;
+        f.flash = Math.max(0, (f.flash || 0) - dt);
+        const col = f.type === 'tower' ? (d.x + 18 > f.x - 16 && d.x - 18 < f.x + 16 && d.y + 10 > GROUND - f.h - 12) : Math.hypot(d.x - f.x, d.y - f.y) < f.r + 14;
+        if (col) { if (f.type !== 'tower') { f.hp = 0; kill(f); } hurt(); }
+      }
+      G.foes = G.foes.filter(f => !f.dead && f.x > -80);
+      for (const b of G.bolts) {
+        b.x += b.vx * dt; b.y += b.vy * dt; if (b.kind === 'arrow') b.vy += 60 * dt;
+        if (Math.hypot(b.x - d.x, b.y - d.y) < 16) { b.dead = true; hurt(); }
+      }
+      G.bolts = G.bolts.filter(b => !b.dead && b.x > -20 && b.x < W + 20 && b.y > -20 && b.y < H);
+      // Schätze und Power-ups
+      for (const it of G.items) {
+        it.x -= G.speed * (it.fixed ? 1 : 0.7) * dt;
+        if (!it.fixed) { it.vy += 160 * dt; it.y = Math.min(GROUND - 8, it.y + it.vy * dt); }
+        const dd = Math.hypot(it.x - d.x, it.y - d.y);
+        if (G.power.magnet > 0 && dd < 170) { it.x += (d.x - it.x) * 6 * dt; it.y += (d.y - it.y) * 6 * dt; }
+        if (dd < 22) {
+          it.dead = true;
+          if (it.kind === 'coin') { G.score += 5; burst(it.x, it.y, 5, ['#ffd34d', '#fff'], 80, 0.3, 2); }
+          else if (it.kind === 'gem') { G.score += 50; say(it.x, it.y, '+50 💎', '#8fe3ff'); burst(it.x, it.y, 12, ['#8fe3ff', '#fff'], 120, 0.5, 3); Sound.play('research'); }
+          else if (it.kind === 'heart') { G.lives = Math.min(5, G.lives + 1); say(it.x, it.y, '+1 ❤️', '#ff8a8d'); Sound.play('win'); }
+          else { G.power[it.kind] = it.kind === 'triple' ? 9 : 7; say(it.x, it.y, { triple: 'Dreifach-Feuer!', shield: 'Schild!', magnet: 'Magnet!' }[it.kind], '#ffe2a0', true); Sound.play('win'); }
+        }
+      }
+      G.items = G.items.filter(it => !it.dead && it.x > -20);
+    }
+
+    // ---------- Zeichnen ----------
+    function drawDragon(x, y, col, flap, flip = false, hurtBlink = false) {
+      g.save(); g.translate(x, y); if (flip) g.scale(-1, 1);
+      if (hurtBlink) g.globalAlpha = 0.45;
+      const w = Math.sin(flap) * 0.9;
+      // Schwanz
+      g.strokeStyle = col; g.lineWidth = 7; g.lineCap = 'round';
+      g.beginPath(); g.moveTo(-14, 2); g.quadraticCurveTo(-34, 14 + Math.sin(flap * 0.5) * 6, -48, 4); g.stroke();
+      g.fillStyle = col; g.beginPath(); g.moveTo(-48, 4); g.lineTo(-58, -2); g.lineTo(-54, 10); g.fill();
+      // hinterer Flügel
+      g.fillStyle = shade(col, -0.35);
+      g.beginPath(); g.moveTo(-4, -4); g.lineTo(-16, -26 - w * 16); g.lineTo(-30, -20 - w * 10); g.lineTo(-14, -2); g.fill();
+      // Körper
+      g.fillStyle = col; g.beginPath(); g.ellipse(0, 0, 22, 11, 0, 0, 7); g.fill();
+      g.fillStyle = shade(col, 0.45); g.beginPath(); g.ellipse(2, 5, 16, 5, 0, 0, 7); g.fill();
+      // Hals und Kopf
+      g.fillStyle = col; g.beginPath(); g.moveTo(14, -6); g.quadraticCurveTo(24, -16, 30, -12); g.lineTo(22, -2); g.fill();
+      g.beginPath(); g.ellipse(31, -12, 10, 7, -0.2, 0, 7); g.fill();
+      g.beginPath(); g.moveTo(36, -14); g.lineTo(46, -10); g.lineTo(36, -6); g.fill();
+      g.fillStyle = shade(col, -0.4); g.beginPath(); g.moveTo(27, -18); g.lineTo(22, -27); g.lineTo(31, -19); g.fill();
+      g.fillStyle = '#fff'; g.beginPath(); g.arc(33, -14, 2.4, 0, 7); g.fill();
+      g.fillStyle = '#000'; g.beginPath(); g.arc(33.8, -14, 1.2, 0, 7); g.fill();
+      // vorderer Flügel
+      g.fillStyle = shade(col, -0.15);
+      g.beginPath(); g.moveTo(4, -6); g.lineTo(-6, -34 - w * 22); g.lineTo(-26, -28 - w * 14); g.lineTo(-12, -16 - w * 6); g.lineTo(-8, -2); g.fill();
+      g.strokeStyle = shade(col, -0.5); g.lineWidth = 1.2;
+      g.beginPath(); g.moveTo(4, -6); g.lineTo(-6, -34 - w * 22); g.moveTo(0, -6); g.lineTo(-26, -28 - w * 14); g.stroke();
+      g.restore();
+    }
+    function shade(hex, f) {
+      const n = parseInt(hex.slice(1), 16), r = n >> 16, gg = (n >> 8) & 255, b = n & 255;
+      const m = v => Math.max(0, Math.min(255, Math.round(f < 0 ? v * (1 + f) : v + (255 - v) * f)));
+      return `rgb(${m(r)},${m(gg)},${m(b)})`;
+    }
+    function hills(off, amp, base, col, step) {
+      g.fillStyle = col; g.beginPath(); g.moveTo(0, H);
+      for (let x = 0; x <= W + step; x += step) { const X = x - (off % step); const k = Math.floor((x + off) / step); g.lineTo(X, base - (Math.sin(k * 1.7) * 0.5 + Math.sin(k * 0.6) * 0.5 + 1) * amp); }
+      g.lineTo(W, H); g.fill();
+    }
+    function draw() {
+      if (!g) return;
+      g.setTransform(cv.width / W, 0, 0, cv.height / H, 0, 0);
+      if (G.shake > 0) g.translate(rand(-5, 5) * G.shake * 3, rand(-5, 5) * G.shake * 3);
+      // Himmel: Abendrot, wird mit der Strecke zur Nacht
+      const night = Math.min(1, G.dist / 9000);
+      const sky = g.createLinearGradient(0, 0, 0, H);
+      sky.addColorStop(0, night > 0.5 ? '#141c3a' : '#2b4a7a'); sky.addColorStop(0.55, night > 0.5 ? '#5a3a6a' : '#e88a5a'); sky.addColorStop(1, '#ffcf7a');
+      g.fillStyle = sky; g.fillRect(-10, -10, W + 20, H + 20);
+      g.fillStyle = 'rgba(255,240,200,.85)'; g.beginPath(); g.arc(520, 70 + night * 40, 26, 0, 7); g.fill();
+      for (const c of G.clouds) { g.fillStyle = 'rgba(255,255,255,.55)'; g.beginPath(); g.ellipse(c.x, c.y, 34 * c.s, 10 * c.s, 0, 0, 7); g.ellipse(c.x + 16 * c.s, c.y - 6 * c.s, 20 * c.s, 9 * c.s, 0, 0, 7); g.fill(); }
+      hills(G.dist * 0.15, 40, H - 70, 'rgba(70,60,110,.75)', 90);
+      // ferne Burg
+      const bx = W - ((G.dist * 0.15) % (W + 300));
+      g.fillStyle = 'rgba(50,40,80,.85)'; g.fillRect(bx, H - 150, 60, 50); g.fillRect(bx - 10, H - 175, 18, 75); g.fillRect(bx + 52, H - 170, 18, 70);
+      for (let k = 0; k < 4; k++) g.fillRect(bx + k * 16, H - 158, 8, 8);
+      hills(G.dist * 0.4, 28, H - 40, '#3f6a3a', 60);
+      // Boden
+      g.fillStyle = '#4d7a32'; g.fillRect(0, GROUND, W, H - GROUND);
+      g.fillStyle = '#3a5e25'; for (let x = -((G.dist) % 24); x < W; x += 24) g.fillRect(x, GROUND, 12, 4);
+
+      // Schätze
+      for (const it of G.items) {
+        if (it.kind === 'coin') { g.fillStyle = '#ffd34d'; g.beginPath(); g.ellipse(it.x, it.y, 5 * Math.abs(Math.sin(G.t * 5 + it.x * 0.05)) + 1.5, 6, 0, 0, 7); g.fill(); g.strokeStyle = '#a07812'; g.lineWidth = 1; g.stroke(); }
+        else if (it.kind === 'gem') { g.fillStyle = '#8fe3ff'; g.beginPath(); g.moveTo(it.x, it.y - 8); g.lineTo(it.x + 7, it.y); g.lineTo(it.x, it.y + 8); g.lineTo(it.x - 7, it.y); g.fill(); }
+        else {
+          g.fillStyle = 'rgba(255,255,255,.25)'; g.beginPath(); g.arc(it.x, it.y, 13 + Math.sin(G.t * 6) * 2, 0, 7); g.fill();
+          g.font = '16px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+          g.fillText({ triple: '🔥', shield: '🛡️', magnet: '🧲', heart: '❤️' }[it.kind], it.x, it.y + 1);
+        }
+      }
+      // Gegner
+      for (const f of G.foes) {
+        g.save();
+        if (f.flash > 0) g.filter = 'brightness(2.2)';
+        if (f.type === 'bird') {
+          const w = Math.sin(f.ph * 2) * 7;
+          g.strokeStyle = '#1d1a20'; g.lineWidth = 3; g.lineCap = 'round';
+          g.beginPath(); g.moveTo(f.x - 12, f.y - w); g.quadraticCurveTo(f.x - 5, f.y - 4, f.x, f.y); g.quadraticCurveTo(f.x + 5, f.y - 4, f.x + 12, f.y - w); g.stroke();
+          g.fillStyle = '#1d1a20'; g.beginPath(); g.ellipse(f.x, f.y + 1, 5, 3, 0, 0, 7); g.fill();
+          g.fillStyle = '#e8b64c'; g.beginPath(); g.moveTo(f.x - 5, f.y); g.lineTo(f.x - 9, f.y + 1.5); g.lineTo(f.x - 5, f.y + 2); g.fill();
+        } else if (f.type === 'tower') {
+          const top = GROUND - f.h;
+          g.fillStyle = '#8d806c'; g.fillRect(f.x - 16, top, 32, f.h);
+          g.fillStyle = '#6e6252'; for (let y = top + 8; y < GROUND; y += 12) g.fillRect(f.x - 16 + ((y / 12) % 2) * 8, y, 16, 2);
+          g.fillStyle = '#8d806c'; for (let k = 0; k < 3; k++) g.fillRect(f.x - 16 + k * 12, top - 8, 8, 8);
+          g.fillStyle = '#1d150c'; g.fillRect(f.x - 3, top + 18, 6, 10);
+          g.fillStyle = '#c0392b'; g.beginPath(); g.arc(f.x + 2, top - 14, 5, 0, 7); g.fill();
+          g.strokeStyle = '#5a3d22'; g.lineWidth = 2; g.beginPath(); g.arc(f.x - 4, top - 14, 7, Math.PI * 0.6, Math.PI * 1.4); g.stroke();
+          g.fillStyle = 'rgba(0,0,0,.5)'; g.fillRect(f.x - 14, top - 30, 28, 4); g.fillStyle = '#ff5a5f'; g.fillRect(f.x - 14, top - 30, 28 * f.hp / 7, 4);
+        } else if (f.type === 'balloon') {
+          g.fillStyle = '#c0392b'; g.beginPath(); g.arc(f.x, f.y, 20, 0, 7); g.fill();
+          g.fillStyle = '#f3ead2'; g.beginPath(); g.ellipse(f.x, f.y, 7, 20, 0, 0, 7); g.fill();
+          g.strokeStyle = '#3a2a1a'; g.lineWidth = 1; g.beginPath(); g.moveTo(f.x - 12, f.y + 15); g.lineTo(f.x - 6, f.y + 32); g.moveTo(f.x + 12, f.y + 15); g.lineTo(f.x + 6, f.y + 32); g.stroke();
+          g.fillStyle = '#7a4a24'; g.fillRect(f.x - 8, f.y + 30, 16, 9);
+        } else if (f.type === 'wyvern') drawDragon(f.x, f.y, '#3f8a4a', G.t * 9 + f.ph, true);
+        g.restore();
+      }
+      // Pfeile und feindliches Feuer
+      for (const b of G.bolts) {
+        if (b.kind === 'arrow') { const a = Math.atan2(b.vy, b.vx); g.save(); g.translate(b.x, b.y); g.rotate(a); g.strokeStyle = '#3a2a1a'; g.lineWidth = 2; g.beginPath(); g.moveTo(-10, 0); g.lineTo(6, 0); g.stroke(); g.fillStyle = '#ddd'; g.beginPath(); g.moveTo(9, 0); g.lineTo(4, -3); g.lineTo(4, 3); g.fill(); g.restore(); }
+        else { g.fillStyle = '#7dff7a'; g.beginPath(); g.arc(b.x, b.y, 6, 0, 7); g.fill(); g.fillStyle = 'rgba(125,255,122,.3)'; g.beginPath(); g.arc(b.x + 6, b.y, 9, 0, 7); g.fill(); }
+      }
+      // Feuerbälle des Drachen
+      for (const s of G.shots) {
+        const gr = g.createRadialGradient(s.x, s.y, 1, s.x, s.y, 9);
+        gr.addColorStop(0, '#fff6c0'); gr.addColorStop(0.5, '#ffb347'); gr.addColorStop(1, 'rgba(255,90,40,0)');
+        g.fillStyle = gr; g.beginPath(); g.arc(s.x, s.y, 9, 0, 7); g.fill();
+      }
+      // Drache
+      const d = G.dr;
+      if (G.power.shield > 0) { g.strokeStyle = `rgba(143,208,255,${0.5 + Math.sin(G.t * 10) * 0.2})`; g.lineWidth = 3; g.beginPath(); g.arc(d.x + 4, d.y - 6, 34, 0, 7); g.stroke(); }
+      g.save(); g.translate(d.x, d.y); g.rotate(Math.max(-0.35, Math.min(0.35, d.vy / 900))); g.translate(-d.x, -d.y);
+      drawDragon(d.x, d.y, myColor(), G.t * (hold ? 16 : 9), false, G.inv > 0 && Math.floor(G.t * 12) % 2 === 0);
+      g.restore();
+      // Partikel
+      for (const p of G.parts) { g.globalAlpha = Math.max(0, p.life / p.max); g.fillStyle = p.c; g.beginPath(); g.arc(p.x, p.y, p.r, 0, 7); g.fill(); }
+      g.globalAlpha = 1;
+      for (const t of G.texts) {
+        g.globalAlpha = Math.max(0, 1 - t.t / (t.big ? 1.4 : 0.9));
+        g.font = `900 ${t.big ? 20 : 14}px Georgia, serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.lineWidth = 4; g.strokeStyle = 'rgba(0,0,0,.65)'; g.strokeText(t.txt, t.x, t.y); g.fillStyle = t.c; g.fillText(t.txt, t.x, t.y);
+      }
+      g.globalAlpha = 1;
+      // Anzeige
+      g.setTransform(cv.width / W, 0, 0, cv.height / H, 0, 0);
+      g.textBaseline = 'middle';
+      if (G.state === 'play' || G.state === 'over') {
+        g.font = '15px sans-serif'; g.textAlign = 'left';
+        for (let k = 0; k < G.lives; k++) g.fillText('❤️', 12 + k * 20, 18);
+        g.font = '900 22px Georgia, serif'; g.textAlign = 'right'; g.lineWidth = 4; g.strokeStyle = 'rgba(0,0,0,.6)';
+        g.strokeText(G.score, W - 14, 20); g.fillStyle = '#ffe2a0'; g.fillText(G.score, W - 14, 20);
+        g.font = '700 12px sans-serif'; g.fillStyle = '#fff'; g.fillText(`${Math.floor(G.dist / 10)} m`, W - 14, 40);
+        if (G.combo > 1 && G.comboT > 0) { g.font = '900 16px Georgia, serif'; g.textAlign = 'center'; g.strokeText(`Kombo ×${Math.min(5, G.combo)}`, W / 2, 20); g.fillStyle = '#ff9a3c'; g.fillText(`Kombo ×${Math.min(5, G.combo)}`, W / 2, 20); }
+        const pw = Object.entries(G.power).filter(([, v]) => v > 0);
+        pw.forEach(([k, v], i) => { g.font = '14px sans-serif'; g.textAlign = 'left'; g.fillStyle = '#fff'; g.fillText(`${{ triple: '🔥', shield: '🛡️', magnet: '🧲' }[k]} ${Math.ceil(v)}s`, 12 + i * 58, 42); });
+      }
+      if (G.state !== 'play') {
+        g.fillStyle = 'rgba(10,8,20,.55)'; g.fillRect(0, 0, W, H);
+        g.textAlign = 'center'; g.lineWidth = 5; g.strokeStyle = 'rgba(0,0,0,.6)';
+        const big = (txt, y, size, col) => { g.font = `900 ${size}px Georgia, serif`; g.strokeText(txt, W / 2, y); g.fillStyle = col; g.fillText(txt, W / 2, y); };
+        if (G.state === 'intro') {
+          big('🐉 DRACHENFLUG', H / 2 - 50, 36, '#ffe2a0');
+          big('Halten = steigen · Loslassen = sinken', H / 2, 16, '#fff');
+          big('Dein Drache speit von selbst Feuer. Weich Pfeilen und Türmen aus!', H / 2 + 24, 13, '#ddd');
+          big(Math.floor(G.t * 2) % 2 ? 'Tippen zum Starten' : '', H / 2 + 66, 20, '#ff9a3c');
+        } else {
+          big(G.rec ? '🏆 NEUER REKORD!' : 'ABGESTÜRZT!', H / 2 - 50, 32, G.rec ? '#ffd34d' : '#ff8a8d');
+          big(`${G.score} Punkte · ${Math.floor(G.dist / 10)} m`, H / 2 - 8, 22, '#fff');
+          big(`Rekord: ${best()}`, H / 2 + 22, 15, '#ffe2a0');
+          big(Math.floor(G.t * 2) % 2 ? 'Tippen für eine neue Runde' : '', H / 2 + 64, 18, '#ff9a3c');
+        }
+      }
+    }
+
+    o.addEventListener('click', e => { if (e.target === o || e.target.closest('[data-mclose]')) close(); });
+    document.addEventListener('keydown', e => {
+      if (!isOpen() || !G) return;
+      if (e.key === ' ' || e.key === 'ArrowUp' || e.key === 'w') { e.preventDefault(); e.stopImmediatePropagation(); if (!hold && G.state !== 'play' && !e.repeat && canRestart()) start(); hold = true; }
+      else if (e.key === 'Escape') close();
+    }, true);
+    document.addEventListener('keyup', e => { if (e.key === ' ' || e.key === 'ArrowUp' || e.key === 'w') hold = false; }, true);
     return { open, close, isOpen };
   })();
 
