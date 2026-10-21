@@ -17,7 +17,7 @@
     return { ...B, icon: b === 'fort' ? '#castle' : '#b-' + b, where: B.coast ? 'an der Küste' : B.on.length >= 5 ? 'überall' : B.on.map(t => K.TERRAIN[t].name).join(', ') };
   }
   const newSeed = () => (Math.random() * 2 ** 32) >>> 0;
-  const APP_VERSION = '24';
+  const APP_VERSION = '25';
   // nur zum Testen: mit ?debug in der Adresse ist der Spielzustand in der Konsole erreichbar
   const DEBUG = new URLSearchParams(location.search).has('debug');
 
@@ -1363,11 +1363,16 @@
         ang = Math.max(-0.6, Math.min(0.6, ang));
         const ux = Math.cos(ang), uy = Math.sin(ang);
         const proj = P.map(([x, y]) => (x - mx) * ux + (y - my) * uy);
-        const len = Math.max(60, Math.max(...proj) - Math.min(...proj) + 50);
-        const name = (pl.realm || pl.name).toUpperCase();
-        const fs = Math.max(9, Math.min(46, len / (name.length * 0.95)));
-        html += `<text class="realm" x="${mx.toFixed(1)}" y="${my.toFixed(1)}" font-size="${fs.toFixed(1)}" fill="${pl.color}"
-          transform="rotate(${(ang * 180 / Math.PI).toFixed(1)} ${mx.toFixed(1)} ${my.toFixed(1)})">${esc(name)}</text>`;
+        const len = Math.max(70, Math.max(...proj) - Math.min(...proj) + 30);
+        const name = pl.realm || pl.name;
+        // kleiner, edler Schriftzug, der sich sanft entlang des Gebiets biegt
+        const fs = Math.max(6, Math.min(15, len / (name.length * 1.35)));
+        const half = Math.min(len, name.length * fs * 1.15) / 2 + 10, bend = half * 0.14;
+        const x1 = mx - ux * half, y1 = my - uy * half, x2 = mx + ux * half, y2 = my + uy * half;
+        const cx = mx + uy * bend * 2, cy = my - ux * bend * 2;
+        const id = `rp-${p}-${html.length}`;
+        html += `<path id="${id}" d="M${x1.toFixed(1)} ${y1.toFixed(1)} Q${cx.toFixed(1)} ${cy.toFixed(1)} ${x2.toFixed(1)} ${y2.toFixed(1)}" fill="none"/>
+          <text class="realm" font-size="${fs.toFixed(1)}" fill="${pl.color}" dy="${(fs * 0.35).toFixed(1)}"><textPath href="#${id}" startOffset="50%">${esc(name)}</textPath></text>`;
       });
     });
     $('#realms').innerHTML = html;
@@ -1385,8 +1390,11 @@
       html += `<text class="pname${c.sz === 'S' ? ' small' : ''}" x="${x}" y="${y - 15}">${esc(c.name)}</text>`;
       if (c.throne) html += `<g class="throne-mark"><use href="#crown" x="${x - 10}" y="${y - 60}" width="20" height="13"/><text class="throne-txt" x="${x}" y="${y - 63}">THRON</text></g>`;
       if (K.isCity(c)) {
-        html += `<use href="#castle" x="${x - 12}" y="${y - 41}" width="24" height="20" style="color:${col}" filter="url(#f-soft)"/>`;
-        if (c.capital) html += `<use href="#crown" x="${x - 5}" y="${y - 48}" width="10" height="6.5"/>`;
+        if (c.capital) {
+          html += `<ellipse class="cap-glow" cx="${x}" cy="${y - 22}" rx="22" ry="9" fill="${col}"/>`;
+          html += `<use href="#capital" x="${x - 19}" y="${y - 52}" width="38" height="32" style="color:${col}" filter="url(#f-soft)"/>`;
+          html += `<use class="cap-crown" href="#crown" x="${x - 6}" y="${y - 63}" width="12" height="7.5"/>`;
+        } else html += `<use href="#castle" x="${x - 12}" y="${y - 41}" width="24" height="20" style="color:${col}" filter="url(#f-soft)"/>`;
         if (c.walls) html += `<use href="#walls" x="${x - 20}" y="${y - 29}" width="40" height="13" filter="url(#f-soft)"/>`;
       }
       const key = c.building ? i + ':' + c.building : '';
@@ -2921,6 +2929,10 @@
   // ---------- Was ist neu? ----------
   // Nach jedem Update erscheint einmal ein Fenster mit den Neuigkeiten (neueste zuerst).
   const CHANGELOG = [
+    { v: '25', title: 'Schönere Hauptstädte', items: [
+      '🏰 Hauptstädte sind jetzt prächtige Burgen mit Bergfried, Ecktürmen, Fahnen in deiner Reichsfarbe und erleuchteten Fenstern.',
+      '🏷️ Reichsnamen auf der Karte sind kleiner und eleganter und schwingen sich sanft über das Gebiet.',
+    ] },
     { v: '24', title: 'Neuigkeiten-Fenster', items: [
       '📰 Nach jedem Update siehst du hier, was neu ist – und im Hauptmenü unter „Neuigkeiten“ jederzeit wieder.',
     ] },
