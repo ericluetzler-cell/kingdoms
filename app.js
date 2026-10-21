@@ -17,7 +17,7 @@
     return { ...B, icon: b === 'fort' ? '#castle' : '#b-' + b, where: B.coast ? 'an der Küste' : B.on.length >= 5 ? 'überall' : B.on.map(t => K.TERRAIN[t].name).join(', ') };
   }
   const newSeed = () => (Math.random() * 2 ** 32) >>> 0;
-  const APP_VERSION = '26';
+  const APP_VERSION = '27';
   // nur zum Testen: mit ?debug in der Adresse ist der Spielzustand in der Konsole erreichbar
   const DEBUG = new URLSearchParams(location.search).has('debug');
 
@@ -2997,6 +2997,9 @@
   // ---------- Was ist neu? ----------
   // Nach jedem Update erscheint einmal ein Fenster mit den Neuigkeiten (neueste zuerst).
   const CHANGELOG = [
+    { v: '27', title: 'Ruhigere Forschung', items: [
+      '🔬 Der Forschungs-Knopf blinkt nicht mehr – er ist nur noch dezent golden umrandet, und die Zahl zeigt, was du dir leisten kannst.',
+    ] },
     { v: '26', title: 'Lebendige Provinzen', items: [
       '🏘️ Um deine Hauptstadt wächst eine Stadt mit Häusern, Wegen und Gärten – und die Provinz bekommt einen goldenen Rand.',
       '🌾 Gebäude prägen jetzt die ganze Provinz: Felder beim Bauernhof, Holzstapel beim Sägewerk, Steinblöcke, Boote am Hafen, Marktstände, Zelte und mehr.',
