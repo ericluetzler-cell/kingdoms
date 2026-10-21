@@ -820,3 +820,33 @@ kbd { display: inline-block; padding: .05rem .45rem; border-radius: 6px; border:
 .cap-glow { opacity: .28; filter: blur(4px); }
 .cap-crown { filter: drop-shadow(0 0 2px rgba(255, 210, 100, .9)); }
 .realm { letter-spacing: .24em; fill-opacity: .7; stroke-width: 1.3px; stroke: rgba(12, 9, 4, .6); }
+
+/* ===== v26: Provinz-Schmuck ===== */
+.deco { filter: drop-shadow(0 .5px .5px rgba(0, 0, 0, .55)); }
+.deco .field { fill: #d8b955; stroke: rgba(90, 65, 15, .7); stroke-width: .5; }
+.deco .furrow { stroke: rgba(120, 90, 25, .65); stroke-width: .45; fill: none; }
+.deco .hay { fill: #e2c25a; stroke: #8a6a1e; stroke-width: .4; }
+.deco .log { fill: #8b5a2b; stroke: #4a2e14; stroke-width: .4; }
+.deco .logend { fill: #e2ad73; stroke: #4a2e14; stroke-width: .3; }
+.deco .stumpd { fill: #6e4422; }
+.deco .stone { fill: #b9b2a4; stroke: #5a544a; stroke-width: .4; }
+.deco .spoild { fill: #8d806c; }
+.deco .tunnel { fill: #1f1a14; stroke: #8b5a2b; stroke-width: .7; }
+.deco .rail { stroke: #5a4a3a; stroke-width: .6; }
+.deco .hull { fill: #7a4a24; stroke: #3a220f; stroke-width: .4; }
+.deco .mast { stroke: #3a220f; stroke-width: .5; fill: none; }
+.deco .sail { fill: #f2ead6; stroke: #8a7a5a; stroke-width: .3; }
+.deco .wall, .deco .hwall { fill: #e4d6b8; stroke: #6a5a40; stroke-width: .35; }
+.deco .roofb { fill: #3d6fa6; stroke: #23405f; stroke-width: .35; }
+.deco .stall { fill: #c9a46a; stroke: #6a5030; stroke-width: .3; }
+.deco .awning { fill: #e5484d; stroke: #7a1d1d; stroke-width: .3; }
+.deco .awning.b { fill: #3d8fd6; stroke: #1d3f7a; }
+.deco .col { stroke: #8a7a5a; stroke-width: .5; }
+.deco .tent { fill: #d8c49a; stroke: #6a5030; stroke-width: .35; }
+.deco .palisade { fill: #8b5a2b; stroke: #4a2e14; stroke-width: .4; }
+.deco .win { fill: #ffd77a; }
+.deco .road { fill: none; stroke: #b49a6a; stroke-width: 1.6; stroke-linecap: round; opacity: .8; stroke-dasharray: 2.5 1.2; }
+.deco .garden { fill: #4f8a3a; } .deco .garden2 { fill: #6fae4a; }
+.bldg .bplate { fill: rgba(0, 0, 0, .3); }
+.prov.capital .pr { stroke: #ffd36b; stroke-width: 1.8; stroke-dasharray: none; filter: drop-shadow(0 0 3px rgba(255, 211, 107, .8)); }
+.prov.capital .pf { fill-opacity: .34; }

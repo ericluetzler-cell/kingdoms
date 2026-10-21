@@ -17,7 +17,7 @@
     return { ...B, icon: b === 'fort' ? '#castle' : '#b-' + b, where: B.coast ? 'an der Küste' : B.on.length >= 5 ? 'überall' : B.on.map(t => K.TERRAIN[t].name).join(', ') };
   }
   const newSeed = () => (Math.random() * 2 ** 32) >>> 0;
-  const APP_VERSION = '25';
+  const APP_VERSION = '26';
   // nur zum Testen: mit ?debug in der Adresse ist der Spielzustand in der Konsole erreichbar
   const DEBUG = new URLSearchParams(location.search).has('debug');
 
@@ -1319,6 +1319,7 @@
       if (S.shootFrom >= 0) { if (i === S.shootFrom) cls.push('sel'); else cls.push(shootT.includes(i) ? 'shoot' : 'dim'); }
       if (i === hint) cls.push('hint');
       if (c.throne) cls.push('throne');
+      if (c.capital) cls.push('capital');
       g.setAttribute('class', cls.join(' '));
       g.style.setProperty('--c', c.owner >= 0 ? st.players[c.owner].color : 'transparent');
     });
@@ -1378,6 +1379,71 @@
     $('#realms').innerHTML = html;
   }
 
+  // ---------- Provinz-Schmuck: Gebäude und Hauptstadt prägen die ganze Provinz ----------
+  const vh = (a, b) => { const x = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return x - Math.floor(x); };
+  // Feldmittelpunkte je Provinz (einmal pro Karte berechnet), dazu: liegt das Feld am Wasser?
+  function provHexes(geo) {
+    if (S.hexCache && S.hexCache.geo === geo) return S.hexCache.list;
+    const list = [];
+    geo.prov.forEach((p, i) => {
+      if (p < 0) return;
+      const [x, y] = K.hexXY(geo, i);
+      let wet = false;
+      for (let d = 0; d < 6; d++) { const j = K.hexNeighbor(geo, i, d); if (j >= 0 && geo.terr[j] === '.') wet = true; }
+      (list[p] = list[p] || []).push({ i, x, y, wet });
+    });
+    S.hexCache = { geo, list };
+    return list;
+  }
+  // n Plätze in der Provinz, die nicht auf Namen, Truppen oder Gebäude-Symbol liegen
+  function spots(st, ci, n, salt, wetOnly) {
+    const c = st.cells[ci], hs = (provHexes(st.geo)[ci] || []).filter(h => (!wetOnly || h.wet)
+      && Math.hypot(h.x - c.lx, h.y - c.ly) > 17 && Math.hypot(h.x - (c.lx + BLDG_SPOT[0]), h.y - (c.ly + BLDG_SPOT[1])) > 13);
+    return hs.map(h => ({ ...h, r: vh(h.i, salt) })).sort((a, b) => a.r - b.r).slice(0, n)
+      .map(h => ({ x: h.x + (vh(h.i, salt + 1) - 0.5) * 6, y: h.y + (vh(h.i, salt + 2) - 0.5) * 6, r: h.r }));
+  }
+  const DECO = {
+    farm: (x, y, r) => `<g transform="translate(${x} ${y}) rotate(${(r - 0.5) * 40})"><rect class="field" x="-6" y="-3.5" width="12" height="7" rx=".8"/><path class="furrow" d="M-6 -1.6 H6 M-6 .2 H6 M-6 2 H6"/></g>`,
+    granary: (x, y) => `<g transform="translate(${x} ${y})"><path class="hay" d="M-4 2 Q-4 -4 0 -5 Q4 -4 4 2 Z"/><path class="hay" d="M1 3 Q1 -1 4 -2 Q7 -1 7 3 Z"/></g>`,
+    lumber: (x, y) => `<g transform="translate(${x} ${y})"><rect class="log" x="-5" y="-1" width="9" height="2.4" rx="1.2"/><rect class="log" x="-4" y="1.6" width="9" height="2.4" rx="1.2"/><circle class="logend" cx="4" cy=".2" r="1.2"/><circle class="logend" cx="5" cy="2.8" r="1.2"/><rect class="stumpd" x="-8" y="2" width="2.4" height="2"/></g>`,
+    quarry: (x, y) => `<g transform="translate(${x} ${y})"><rect class="stone" x="-5" y="-1" width="5" height="3.6" rx=".5"/><rect class="stone" x="0.5" y="0" width="4.4" height="3" rx=".5"/><rect class="stone" x="-2.5" y="-4" width="4.4" height="3" rx=".5"/></g>`,
+    mine: (x, y) => `<g transform="translate(${x} ${y})"><path class="spoild" d="M-6 3 q4 -6 8 0 z"/><path class="tunnel" d="M1 3 V0 a2.6 2.6 0 0 1 5.2 0 V3 Z"/><path class="rail" d="M-7 4 H8"/></g>`,
+    harbor: (x, y, r) => `<g transform="translate(${x} ${y}) rotate(${(r - 0.5) * 30})"><path class="hull" d="M-5 1 H5 L3.6 3 H-3.6 Z"/><path class="mast" d="M0 1 V-6"/><path class="sail" d="M.3 -5.6 L4 0 H.3 Z"/></g>`,
+    library: (x, y) => `<g transform="translate(${x} ${y})"><rect class="wall" x="-3" y="-2" width="6" height="5"/><path class="roofb" d="M-4 -2 L0 -5.5 L4 -2 Z"/></g>`,
+    market: (x, y, r) => `<g transform="translate(${x} ${y})"><rect class="stall" x="-3.5" y="-.5" width="7" height="3"/><path class="awning${r > 0.5 ? ' b' : ''}" d="M-4.5 -.5 L-3.5 -3 H3.5 L4.5 -.5 Z"/></g>`,
+    temple: (x, y) => `<g transform="translate(${x} ${y})"><path class="wall" d="M-4 3 V-1 H4 V3 Z"/><path class="roofb" d="M-5 -1 L0 -4 L5 -1 Z"/><path class="col" d="M-2.5 -1 V3 M0 -1 V3 M2.5 -1 V3"/></g>`,
+    caravan: (x, y, r, col) => `<g transform="translate(${x} ${y})"><path class="tent" d="M-5 3 L-2 -3 L1 3 Z"/><path class="tent" style="fill:${col}" d="M0 3 L3 -2 L6 3 Z"/></g>`,
+    tower: (x, y, r, col) => `<g transform="translate(${x} ${y})"><rect class="wall" x="-1.6" y="-5" width="3.2" height="8"/><path d="M-2.4 -5 L0 -8 L2.4 -5 Z" style="fill:${col}"/></g>`,
+    barracks: (x, y, r, col) => `<g transform="translate(${x} ${y})"><path class="tent" style="fill:${col}" d="M-4 3 L0 -3 L4 3 Z"/><path d="M0 -3 V-6" class="mast"/><path d="M.2 -6 L3 -5 L.2 -4 Z" style="fill:${col}"/></g>`,
+    fort: (x, y) => `<g transform="translate(${x} ${y})"><path class="palisade" d="M-5 3 V-2 l1 -1 l1 1 V3 M-2 3 V-2 l1 -1 l1 1 V3 M1 3 V-2 l1 -1 l1 1 V3 M4 3 V-2 l1 -1 l1 1 V3"/></g>`,
+  };
+  const DECO_N = { farm: 6, granary: 4, lumber: 5, quarry: 5, mine: 3, harbor: 3, library: 3, market: 3, temple: 2, caravan: 4, tower: 2, barracks: 4, fort: 4 };
+  function provDecor(st, ci, col) {
+    const c = st.cells[ci];
+    let h = '';
+    if (c.building && DECO[c.building]) {
+      const n = DECO_N[c.building] || 3;
+      let ps = spots(st, ci, n, 7 + c.building.length, c.building === 'harbor');
+      if (!ps.length && c.building === 'harbor') ps = spots(st, ci, 2, 9);
+      h += `<g class="deco d-${c.building}">${ps.map(p => DECO[c.building](p.x.toFixed(1), p.y.toFixed(1), p.r, col)).join('')}</g>`;
+    }
+    if (c.capital) {
+      // Stadt rund um die Burg: Häuser, Wege, Gärten
+      // Häuser dicht um die Burg: Felder der Provinz nahe der Burg, aber nicht auf Burg, Namen oder Truppen
+      const hs = (provHexes(st.geo)[ci] || []).filter(q => { const dc = Math.hypot(q.x - c.lx, q.y - (c.ly - 34)), dl = Math.hypot(q.x - c.lx, q.y - c.ly); return dc > 15 && dl > 11 && dc < 60; })
+        .flatMap(q => [0, 1].map(k => ({ x: q.x + (vh(q.i, 20 + k) - 0.5) * 9, y: q.y + (vh(q.i, 30 + k) - 0.5) * 8, r: vh(q.i, 40 + k), d: Math.hypot(q.x - c.lx, q.y - c.ly) })))
+        .sort((a, b) => a.d - b.d).slice(0, 16);
+      const roads = hs.slice(0, 4).map(p => `<path class="road" d="M${c.lx} ${c.ly - 18} Q${((c.lx + p.x) / 2 + (p.r - 0.5) * 10).toFixed(1)} ${((c.ly - 18 + p.y) / 2).toFixed(1)} ${p.x.toFixed(1)} ${p.y.toFixed(1)}"/>`).join('');
+      const houses = hs.map((p, k) => {
+        const roof = k % 3 === 0 ? col : ['#a34a30', '#7a5a40', '#8b3a2a'][k % 3];
+        return k % 4 === 3 ? `<g transform="translate(${p.x.toFixed(1)} ${p.y.toFixed(1)})"><circle class="garden" r="3.2"/><circle class="garden2" cx="1.4" cy="-1" r="1.6"/></g>`
+          : `<g transform="translate(${p.x.toFixed(1)} ${p.y.toFixed(1)})"><rect class="hwall" x="-3" y="-1.5" width="6" height="4.5"/><path d="M-3.8 -1.4 L0 -4.6 L3.8 -1.4 Z" style="fill:${roof}"/><rect class="win" x="-1.5" y="0" width="1.2" height="1.4"/><rect class="win" x=".6" y="0" width="1.2" height="1.4"/></g>`;
+      }).join('');
+      h += `<g class="deco town">${roads}${houses}</g>`;
+    }
+    return h;
+  }
+
   // Gebäude stehen sichtbar in der Provinz; neu gebaute erscheinen mit einer kleinen Bau-Animation
   const BLDG_SPOT = [-27, 4];
   function renderLabels() {
@@ -1387,6 +1453,7 @@
     C.forEach((c, i) => {
       const { lx: x, ly: y } = c;
       const col = c.owner >= 0 ? st.players[c.owner].color : '#cfc6b2';
+      html += provDecor(st, i, col);
       html += `<text class="pname${c.sz === 'S' ? ' small' : ''}" x="${x}" y="${y - 15}">${esc(c.name)}</text>`;
       if (c.throne) html += `<g class="throne-mark"><use href="#crown" x="${x - 10}" y="${y - 60}" width="20" height="13"/><text class="throne-txt" x="${x}" y="${y - 63}">THRON</text></g>`;
       if (K.isCity(c)) {
@@ -1412,7 +1479,8 @@
         else if (c.building === 'quarry') art = `<path class="spoil" d="M${bx + 5} ${by + 9} l3 -4 l3 4 z M${bx - 11} ${by + 8} l2.5 -3.5 l2.5 3.5 z"/>`;
         else if (c.building === 'lumber') art = `<path class="stump" d="M${bx + 7} ${by + 6} h3 v2 h-3 z M${bx - 10} ${by + 7} h3 v2 h-3 z"/>`;
         html += `<g class="bldg${fresh ? ' fresh' : ''}" style="transform-origin:${bx}px ${by + 8}px">${art}
-          <use href="#b-${c.building}" x="${bx - 9}" y="${by - 9}" width="18" height="18" filter="url(#f-soft)"/></g>`;
+          <ellipse class="bplate" cx="${bx}" cy="${by + 9}" rx="11" ry="3.4"/>
+          <use href="#b-${c.building}" x="${bx - 12}" y="${by - 13}" width="24" height="24" filter="url(#f-soft)"/></g>`;
       }
       if (c.hut) html += `<use href="#hut" x="${x + BLDG_SPOT[0] - 7}" y="${y + BLDG_SPOT[1] - 7}" width="14" height="14" filter="url(#f-soft)"/>`;
     });
@@ -2929,6 +2997,11 @@
   // ---------- Was ist neu? ----------
   // Nach jedem Update erscheint einmal ein Fenster mit den Neuigkeiten (neueste zuerst).
   const CHANGELOG = [
+    { v: '26', title: 'Lebendige Provinzen', items: [
+      '🏘️ Um deine Hauptstadt wächst eine Stadt mit Häusern, Wegen und Gärten – und die Provinz bekommt einen goldenen Rand.',
+      '🌾 Gebäude prägen jetzt die ganze Provinz: Felder beim Bauernhof, Holzstapel beim Sägewerk, Steinblöcke, Boote am Hafen, Marktstände, Zelte und mehr.',
+      '🔨 Gebäude-Symbole sind größer und stehen auf einem kleinen Sockel.',
+    ] },
     { v: '25', title: 'Schönere Hauptstädte', items: [
       '🏰 Hauptstädte sind jetzt prächtige Burgen mit Bergfried, Ecktürmen, Fahnen in deiner Reichsfarbe und erleuchteten Fenstern.',
       '🏷️ Reichsnamen auf der Karte sind kleiner und eleganter und schwingen sich sanft über das Gebiet.',
