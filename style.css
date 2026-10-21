@@ -670,3 +670,35 @@ button { -webkit-tap-highlight-color: transparent; }
   .modal { max-height: 100vh; border-radius: 14px 14px 0 0; }
   .sound-toggles { top: 6px; }
 }
+
+/* ===== Rohstoffe (v19) ===== */
+.ri { font-style: normal; font-size: .95em; line-height: 1; }
+.res .rs small { margin-left: 1px; }
+.card-btn em.price { flex-wrap: wrap; gap: .15rem .4rem; justify-content: flex-end; font-size: .85rem; }
+.card-btn em.price > span { display: inline-flex; align-items: center; gap: .1rem; }
+.card-btn em.price .miss { color: #ff8a8d; }
+.card-btn em.price .ri { font-size: .8rem; }
+@media (max-width: 860px) {
+  .res { gap: .25rem; font-size: .82rem; padding: .3rem .55rem; }
+  .res .cells { display: none; }
+  .res small { font-size: .62rem; }
+  .res .amt { gap: .15rem; }
+  .res .coin { width: 13px; height: 13px; }
+  .card-btn { width: 96px; }
+  .card-btn em.price { justify-content: center; font-size: .72rem; gap: .05rem .3rem; }
+  .card-btn em.price .ri { font-size: .68rem; }
+}
+@media (max-width: 380px) {
+  .res { font-size: .76rem; padding: .3rem .4rem; }
+  .res small { display: none; }
+}
+.resume { display: flex; flex-direction: column; gap: .5rem; }
+.res small.neg { color: #ff8a8d; }
+.card-btn em.price > span { flex-direction: row; flex: none; }
+@media (max-width: 860px) {
+  .res small { display: inline !important; font-size: .58rem; }
+}
+@media (max-width: 340px) {
+  .res small { display: none !important; }
+}
+.res > span { white-space: nowrap; display: inline-flex; align-items: baseline; }

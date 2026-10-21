@@ -16,19 +16,19 @@
     wo: { name: 'Wolf', plural: 'Wölfe', cost: 1, atk: 2, def: 2, mp: 1, tech: null, monster: true },
     tr: { name: 'Troll', plural: 'Trolle', cost: 1, atk: 4, def: 5, mp: 1, tech: null, monster: true },
     dr: { name: 'Drache', plural: 'Drachen', cost: 1, atk: 10, def: 16, mp: 1, tech: null, monster: true },
-    w: { name: 'Krieger', plural: 'Krieger', cost: 2, atk: 1, def: 1, mp: 1, tech: null },
-    a: { name: 'Bogenschütze', plural: 'Bogenschützen', cost: 3, atk: 1, def: 3, mp: 1, tech: 'archery' },
-    p: { name: 'Speerkämpfer', plural: 'Speerkämpfer', cost: 4, atk: 2, def: 2, mp: 1, tech: 'bronze', note: '+2 Verteidigung gegen Ritter' },
-    k: { name: 'Ritter', plural: 'Ritter', cost: 5, atk: 4, def: 2, mp: 2, tech: 'riding', note: 'bewegt sich 2 Provinzen weit' },
-    c: { name: 'Katapult', plural: 'Katapulte', cost: 6, atk: 6, def: 1, mp: 1, tech: 'math', note: 'ignoriert Festungen und Hauptstädte' },
-    l: { name: 'Langbogenschütze', plural: 'Langbogenschützen', cost: 4, atk: 2, def: 3, mp: 1, tech: 'longbow', ranged: true, note: 'Fernschuss auf Feinde bis 2 Provinzen entfernt' },
-    h: { name: 'Schwere Reiterei', plural: 'Schwere Reiter', cost: 7, atk: 6, def: 3, mp: 2, tech: 'chivalry', note: 'stärkster Angriff, 2 Provinzen weit' },
-    t: { name: 'Tribok', plural: 'Triboke', cost: 9, atk: 9, def: 1, mp: 1, tech: 'engineering', note: 'mächtigste Belagerungswaffe, ignoriert Festungen' },
+    w: { name: 'Krieger', plural: 'Krieger', cost: 2, need: { food: 2 }, atk: 1, def: 1, mp: 1, tech: null },
+    a: { name: 'Bogenschütze', plural: 'Bogenschützen', cost: 3, need: { food: 1, wood: 2 }, atk: 1, def: 3, mp: 1, tech: 'archery' },
+    p: { name: 'Speerkämpfer', plural: 'Speerkämpfer', cost: 4, need: { food: 2, wood: 1 }, atk: 2, def: 2, mp: 1, tech: 'bronze', note: '+2 Verteidigung gegen Ritter' },
+    k: { name: 'Ritter', plural: 'Ritter', cost: 5, need: { food: 3 }, atk: 4, def: 2, mp: 2, tech: 'riding', note: 'bewegt sich 2 Provinzen weit' },
+    c: { name: 'Katapult', plural: 'Katapulte', cost: 6, need: { wood: 4, stone: 2 }, atk: 6, def: 1, mp: 1, tech: 'math', note: 'ignoriert Festungen und Hauptstädte' },
+    l: { name: 'Langbogenschütze', plural: 'Langbogenschützen', cost: 4, need: { food: 1, wood: 3 }, atk: 2, def: 3, mp: 1, tech: 'longbow', ranged: true, note: 'Fernschuss auf Feinde bis 2 Provinzen entfernt' },
+    h: { name: 'Schwere Reiterei', plural: 'Schwere Reiter', cost: 7, need: { food: 4 }, atk: 6, def: 3, mp: 2, tech: 'chivalry', note: 'stärkster Angriff, 2 Provinzen weit' },
+    t: { name: 'Tribok', plural: 'Triboke', cost: 9, need: { wood: 5, stone: 3 }, atk: 9, def: 1, mp: 1, tech: 'engineering', note: 'mächtigste Belagerungswaffe, ignoriert Festungen' },
   };
   const TERRAIN = {
-    plain: { name: 'Ebene', def: 0, gold: 1 },
-    forest: { name: 'Wald', def: 0.25, gold: 1 },
-    mountain: { name: 'Gebirge', def: 0.5, gold: 1 },
+    plain: { name: 'Ebene', def: 0, gold: 1, res: 'food' },
+    forest: { name: 'Wald', def: 0.25, gold: 1, res: 'wood' },
+    mountain: { name: 'Gebirge', def: 0.5, gold: 1, res: 'stone' },
     desert: { name: 'Wüste', def: 0, gold: 0 },
   };
   const PSIZE = {
@@ -38,19 +38,24 @@
   };
   const ANY = ['plain', 'forest', 'mountain', 'desert'];
   const BUILDINGS = {
-    lumber: { name: 'Holzfäller', cost: 3, on: ['forest'], tech: null, gold: 1, sci: 1, desc: '+1 Gold, +1 Wissen' },
-    farm: { name: 'Bauernhof', cost: 4, on: ['plain'], tech: 'agri', gold: 2, desc: '+2 Gold' },
-    mine: { name: 'Mine', cost: 5, on: ['mountain'], tech: 'mining', gold: 3, desc: '+3 Gold' },
-    library: { name: 'Bibliothek', cost: 5, on: ANY, tech: 'writing', sci: 2, desc: '+2 Wissen' },
-    caravan: { name: 'Karawanserei', cost: 5, on: ['desert'], tech: 'trade', gold: 3, desc: '+3 Gold' },
-    fort: { name: 'Festung', cost: 8, on: ANY, tech: 'masonry', desc: '+50 % Verteidigung, hier ausbilden' },
-    tower: { name: 'Wachturm', cost: 4, on: ANY, tech: 'masonry', desc: '+25 % Verteidigung' },
-    barracks: { name: 'Kaserne', cost: 5, on: ['plain', 'forest', 'desert'], tech: 'drill', desc: 'hier Einheiten ausbilden' },
-    market: { name: 'Markt', cost: 6, on: ['plain', 'forest', 'desert'], tech: 'commerce', gold: 2, desc: '+2 Gold' },
-    temple: { name: 'Tempel', cost: 6, on: ANY, tech: 'theology', gold: 1, sci: 1, desc: '+1 Gold, +1 Wissen' },
+    lumber: { name: 'Sägewerk', cost: 3, need: {}, on: ['forest'], tech: null, wood: 3, sci: 1, desc: '+3 Holz, +1 Wissen' },
+    farm: { name: 'Bauernhof', cost: 3, need: { wood: 1 }, on: ['plain'], tech: null, food: 3, gold: 1, desc: '+3 Nahrung, +1 Gold' },
+    quarry: { name: 'Steinbruch', cost: 3, need: { wood: 1 }, on: ['mountain'], tech: null, stone: 3, desc: '+3 Stein' },
+    mine: { name: 'Mine', cost: 5, need: { wood: 2 }, on: ['mountain'], tech: 'mining', gold: 3, desc: '+3 Gold' },
+    library: { name: 'Bibliothek', cost: 5, need: { wood: 1, stone: 1 }, on: ANY, tech: 'writing', sci: 2, desc: '+2 Wissen' },
+    caravan: { name: 'Karawanserei', cost: 5, need: { wood: 2 }, on: ['desert'], tech: 'trade', gold: 3, desc: '+3 Gold' },
+    fort: { name: 'Festung', cost: 8, need: { wood: 2, stone: 4 }, on: ANY, tech: 'masonry', desc: '+50 % Verteidigung, hier ausbilden' },
+    tower: { name: 'Wachturm', cost: 4, need: { stone: 2 }, on: ANY, tech: 'masonry', desc: '+25 % Verteidigung' },
+    barracks: { name: 'Kaserne', cost: 5, need: { wood: 3 }, on: ['plain', 'forest', 'desert'], tech: 'drill', desc: 'hier Einheiten ausbilden' },
+    market: { name: 'Markt', cost: 6, need: { wood: 2, stone: 1 }, on: ['plain', 'forest', 'desert'], tech: 'commerce', gold: 2, desc: '+2 Gold' },
+    temple: { name: 'Tempel', cost: 6, need: { stone: 3 }, on: ANY, tech: 'theology', gold: 1, sci: 1, desc: '+1 Gold, +1 Wissen' },
+    granary: { name: 'Kornspeicher', cost: 5, need: { wood: 2 }, on: ['plain', 'forest', 'desert'], tech: 'agri', food: 2, gold: 1, desc: '+2 Nahrung, +1 Gold' },
   };
+  // Rohstoffe: Nahrung (Ebenen, Bauernhöfe), Holz (Wälder, Sägewerke), Stein (Gebirge, Steinbrüche)
+  const RES = { food: { name: 'Nahrung', icon: '🌾' }, wood: { name: 'Holz', icon: '🪵' }, stone: { name: 'Stein', icon: '🪨' } };
+  const RKEYS = ['food', 'wood', 'stone'];
   const TECHS = {
-    agri: { name: 'Landwirtschaft', tier: 1, cost: 4, req: null, desc: 'Bauernhof bauen (+2 Gold auf Ebenen)' },
+    agri: { name: 'Landwirtschaft', tier: 1, cost: 4, req: null, desc: 'Kornspeicher bauen (+2 Nahrung, +1 Gold) – Bauernhöfe +1 Nahrung' },
     mining: { name: 'Bergbau', tier: 1, cost: 4, req: null, desc: 'Mine bauen (+3 Gold im Gebirge)' },
     writing: { name: 'Schrift', tier: 1, cost: 4, req: null, desc: 'Bibliothek bauen (+2 Wissen)' },
     archery: { name: 'Bogenbau', tier: 1, cost: 4, req: null, desc: 'Bogenschützen ausbilden (Verteidigung 3)' },
@@ -96,13 +101,33 @@
   const emptyU = () => ({ w: 0, a: 0, p: 0, l: 0, k: 0, c: 0, h: 0, t: 0, wo: 0, tr: 0, dr: 0 });
   // Monsterhorte: wer sie besiegt, bekommt den Schatz
   const LAIRS = {
-    wolves: { name: 'Wolfsrudel', icon: '🐺', units: { wo: 4 }, gold: 8, sci: 2 },
-    trolls: { name: 'Trollhöhle', icon: '👹', units: { tr: 3 }, gold: 16, sci: 5 },
-    dragon: { name: 'Drachenhort', icon: '🐉', units: { dr: 1, wo: 2 }, gold: 35, sci: 12 },
+    wolves: { name: 'Wolfsrudel', icon: '🐺', units: { wo: 4 }, gold: 8, sci: 2, food: 4 },
+    trolls: { name: 'Trollhöhle', icon: '👹', units: { tr: 3 }, gold: 16, sci: 5, stone: 6 },
+    dragon: { name: 'Drachenhort', icon: '🐉', units: { dr: 1, wo: 2 }, gold: 35, sci: 12, wood: 8, stone: 8 },
   };
   const total = u => TYPES.reduce((s, t) => s + (u[t] || 0), 0);
   const addU = (a, b) => { const r = emptyU(); for (const t of TYPES) r[t] = (a[t] || 0) + (b[t] || 0); return r; };
   const costOf = u => TYPES.reduce((s, t) => s + (u[t] || 0) * UNITS[t].cost, 0);
+  const needOf = u => { const r = { food: 0, wood: 0, stone: 0 }; for (const t of TYPES) if (u[t]) for (const k of RKEYS) r[k] += u[t] * ((UNITS[t].need || {})[k] || 0); return r; };
+  // Fehlertext, falls Gold oder Rohstoffe nicht reichen – sonst null
+  function lack(pl, gold, need) {
+    const miss = [];
+    if (gold > pl.gold) miss.push(`${gold} Gold`);
+    for (const k of RKEYS) if ((need[k] || 0) > (pl[k] || 0)) miss.push(`${need[k]} ${RES[k].name}`);
+    return miss.length ? `Zu wenig – nötig: ${miss.join(', ')}.` : null;
+  }
+  function pay(pl, gold, need, f = 1) {
+    pl.gold -= Math.round(gold * f);
+    for (const k of RKEYS) pl[k] = (pl[k] || 0) - Math.round((need[k] || 0) * f);
+  }
+  const refund = (pl, gold, need) => { pl.gold += Math.floor(gold / 2); for (const k of RKEYS) pl[k] = (pl[k] || 0) + Math.floor((need[k] || 0) / 2); };
+  // wie viele Einheiten dieses Typs man sich leisten kann
+  function maxAfford(pl, t) {
+    const U = UNITS[t];
+    let n = Math.floor(pl.gold / U.cost);
+    for (const k of RKEYS) if ((U.need || {})[k]) n = Math.min(n, Math.floor((pl[k] || 0) / U.need[k]));
+    return Math.max(0, n);
+  }
   function removeCheapest(u) {
     for (const t of TYPES) if (u[t] > 0) { u[t]--; return t; }
     return null;
@@ -588,7 +613,7 @@
     const mode = MODES[opts.mode] ? opts.mode : 'classic';
     const players = defs.map((p, i) => ({
       name: p.name, type: p.type, level: p.level || null, cid: p.cid || null,
-      color: COLORS.includes(p.color) ? p.color : COLORS[i], alive: true, gold: opts.gold != null ? +opts.gold : 4, sci: 2, techs: [], lastAsk: -10, divNo: 0,
+      color: COLORS.includes(p.color) ? p.color : COLORS[i], alive: true, gold: opts.gold != null ? +opts.gold : 4, sci: 2, food: 4, wood: 3, stone: 2, techs: [], lastAsk: -10, divNo: 0,
     }));
     const st = {
       cells, geo, players, turn: 0, round: 1, attacks: 0, divSeq: 0,
@@ -672,15 +697,20 @@
   function provinceYield(st, c) {
     const p = c.owner;
     let gold = TERRAIN[c.terrain].gold + PSIZE[c.sz].gold + (c.river ? 1 : 0), sci = 0;
-    if (c.capital) { gold += 3; sci += 2; }
+    const r = { food: 0, wood: 0, stone: 0 }, main = TERRAIN[c.terrain].res;
+    if (main) r[main] += 1 + (c.sz === 'L' ? 1 : 0);
+    if (c.river) r.food += 1;
+    if (c.capital) { gold += 3; sci += 2; r.food += 2; r.wood += 2; r.stone += 2; }
     const b = c.building && BUILDINGS[c.building];
     if (b) {
       gold += b.gold || 0; sci += b.sci || 0;
+      for (const k of RKEYS) r[k] += b[k] || 0;
+      if (c.building === 'farm' && hasTech(st, p, 'agri')) r.food += 1;
       if (c.building === 'farm' && hasTech(st, p, 'trade')) gold += 1;
       if (c.building === 'library' && hasTech(st, p, 'university')) sci += 2;
       if (hasTech(st, p, 'banking')) gold += 1;
     }
-    return { gold, sci };
+    return { gold, sci, ...r };
   }
 
   // Unterhalt: je 4 Einheiten 1 Gold pro Runde
@@ -688,20 +718,23 @@
 
   function income(st, p) {
     let gold = 0, sci = 1, cells = 0, troops = 0;
+    const r = { food: 0, wood: 0, stone: 0 };
     for (const c of st.cells) {
       if (c.owner !== p) continue;
       cells++; troops += total(c.u);
       const y = provinceYield(st, c);
       gold += y.gold; sci += y.sci;
+      for (const k of RKEYS) r[k] += y[k];
     }
-    return cells ? { gold, sci, upkeep: upkeepFor(troops) } : { gold: 0, sci: 0, upkeep: 0 };
+    return cells ? { gold, sci, ...r, upkeep: upkeepFor(troops), feed: upkeepFor(troops) } : { gold: 0, sci: 0, food: 0, wood: 0, stone: 0, upkeep: 0, feed: 0 };
   }
 
   function stats(st, p) {
     let cells = 0, troops = 0, buildings = 0;
     for (const c of st.cells) if (c.owner === p) { cells++; troops += total(c.u); if (c.building) buildings++; }
     const inc = income(st, p), pl = st.players[p];
-    return { cells, troops, buildings, gold: pl.gold, sci: pl.sci, techs: pl.techs.length, income: inc.gold - inc.upkeep, gross: inc.gold, upkeep: inc.upkeep, sciIncome: inc.sci };
+    return { cells, troops, buildings, gold: pl.gold, sci: pl.sci, techs: pl.techs.length, income: inc.gold - inc.upkeep, gross: inc.gold, upkeep: inc.upkeep, sciIncome: inc.sci,
+      food: pl.food || 0, wood: pl.wood || 0, stone: pl.stone || 0, foodIncome: inc.food - inc.feed, feed: inc.feed, woodIncome: inc.wood, stoneIncome: inc.stone };
   }
 
   const score = (st, p) => { const s = stats(st, p); return s.cells * 3 + s.techs * 2 + s.buildings; };
@@ -709,9 +742,9 @@
   const aliveCount = st => st.players.filter(p => p.alive).length;
   const isCity = c => c.capital || c.building === 'fort';
   const canRecruit = c => isCity(c) || c.building === 'barracks';
-  const WALLS_COST = 8;
-  // Truppenlimit: klein 8, mittel 10, groß 12, Hauptstadt/Festung +6
-  const capOf = c => 8 + { S: 0, M: 2, L: 4 }[c.sz] + (isCity(c) ? 6 : 0);
+  const WALLS_COST = 6, WALLS_NEED = { stone: 5 };
+  // Truppenlimit: klein 18, mittel 20, groß 22, Hauptstadt/Festung +6
+  const capOf = c => 18 + { S: 0, M: 2, L: 4 }[c.sz] + (isCity(c) ? 6 : 0);
   const roomIn = c => Math.max(0, capOf(c) - total(c.u));
   // Einheiten, die in diesem Zug noch handeln können
   const avail = c => { const r = emptyU(); for (const t of TYPES) r[t] = Math.max(0, c.u[t] - (c.done ? c.done[t] : 0)); return r; };
@@ -722,6 +755,10 @@
     const bonus = (pl.type === 'ai' && pl.level === 'hard' ? 1.2 : 1) * (st.mode === 'blitz' ? 2 : 1);
     pl.gold = Math.max(0, pl.gold + Math.round(inc.gold * bonus) - inc.upkeep);
     pl.sci += Math.round(inc.sci * bonus);
+    for (const k of RKEYS) pl[k] = (pl[k] || 0) + Math.round(inc[k] * bonus);
+    // Armeen essen: je 4 Einheiten 1 Nahrung – fehlt Nahrung, kostet der Einkauf Gold
+    pl.food -= inc.feed;
+    if (pl.food < 0) { pl.gold = Math.max(0, pl.gold + pl.food); pl.food = 0; }
     for (const c of st.cells) { for (const v of c.divs) v.done = false; c.shot = false; sync(c); }
     st.attacks = 0;
     if (st.mode === 'throne' && st.throne >= 0 && st.cells[st.throne].owner === st.turn && !st.over) {
@@ -931,14 +968,14 @@
         for (const t of TYPES) if (units[t] && UNITS[t].monster) return fail('Monster kann man nicht ausbilden.');
         for (const t of TYPES) if (units[t] && !unitUnlocked(st, p, t)) return fail(`${UNITS[t].plural} brauchen „${TECHS[UNITS[t].tech].name}“.`);
         if (total(units) > roomIn(c)) return fail(`Kein Platz: In ${c.name} passen höchstens ${capOf(c)} Truppen (noch ${roomIn(c)} frei).`);
-        const cost = costOf(units);
-        if (cost > me.gold) return fail(`Zu wenig Gold (${cost} nötig).`);
+        const cost = costOf(units), need = needOf(units), miss = lack(me, cost, need);
+        if (miss) return fail(miss);
         // neue Rekruten sammeln sich in dieser Runde in einer eigenen Division
         let v = c.divs.find(d => d.rec === st.round && !d.done);
         if (!v) { v = newDiv(st, p, emptyU()); v.rec = st.round; c.divs.push(v); }
         v.u = addU(v.u, units);
         sync(c);
-        me.gold -= cost;
+        pay(me, cost, need);
         return { ok: true, div: v.id };
       }
       case 'build': {
@@ -949,8 +986,9 @@
         if (c.building) return fail(`Hier steht schon: ${BUILDINGS[c.building].name}.`);
         if (B.tech && !hasTech(st, p, B.tech)) return fail(`${B.name} braucht „${TECHS[B.tech].name}“.`);
         if (!B.on.includes(c.terrain)) return fail(`${B.name} geht nur auf: ${B.on.map(t => TERRAIN[t].name).join(', ')}.`);
-        if (me.gold < B.cost) return fail(`Zu wenig Gold (${B.cost} nötig).`);
-        me.gold -= B.cost; c.building = a.b;
+        const miss = lack(me, B.cost, B.need || {});
+        if (miss) return fail(miss);
+        pay(me, B.cost, B.need || {}); c.building = a.b;
         if (a.b === 'fort') log(st, `🏰 {0} baut eine Festung in ${c.name}.`, p);
         return { ok: true };
       }
@@ -960,8 +998,9 @@
         if (!c || c.owner !== p) return fail('Nur in eigenen Provinzen.');
         if (!isCity(c)) return fail('Stadtmauern gehen nur um Hauptstadt und Festungen.');
         if (c.walls) return fail('Hier stehen schon Stadtmauern.');
-        if (me.gold < WALLS_COST) return fail(`Stadtmauern kosten ${WALLS_COST} Gold.`);
-        me.gold -= WALLS_COST; c.walls = true;
+        const miss = lack(me, WALLS_COST, WALLS_NEED);
+        if (miss) return fail(miss);
+        pay(me, WALLS_COST, WALLS_NEED); c.walls = true;
         log(st, `🧱 {0} baut Stadtmauern um ${c.name}.`, p);
         return { ok: true };
       }
@@ -970,17 +1009,16 @@
         if (!hasTech(st, p, 'demolition')) return fail('Dafür brauchst du die Forschung „Abrissarbeiten“.');
         if (!c || c.owner !== p) return fail('Nur in eigenen Provinzen.');
         if (!c.building && c.walls) {
-          const back = Math.floor(WALLS_COST / 2);
-          me.gold += back; c.walls = false;
-          log(st, `🔨 {0} reißt die Stadtmauern von ${c.name} ab (+${back} Gold).`, p);
+          refund(me, WALLS_COST, WALLS_NEED); c.walls = false;
+          log(st, `🔨 {0} reißt die Stadtmauern von ${c.name} ab (die Hälfte der Kosten zurück).`, p);
           st.demolish = { id: ++st.seq, cell: a.cell };
           return { ok: true };
         }
         if (!c.building) return fail('Hier steht kein Gebäude.');
         if (c.throne) return fail('Die Thronstadt kann man nicht abreißen.');
-        const B = BUILDINGS[c.building], back = Math.floor(B.cost / 2);
-        me.gold += back;
-        log(st, `🔨 {0} reißt ${B.name} in ${c.name} ab (+${back} Gold).`, p);
+        const B = BUILDINGS[c.building];
+        refund(me, B.cost, B.need || {});
+        log(st, `🔨 {0} reißt ${B.name} in ${c.name} ab (die Hälfte der Kosten zurück).`, p);
         c.building = null;
         st.demolish = { id: ++st.seq, cell: a.cell };
         return { ok: true };
@@ -1090,13 +1128,17 @@
           if (t.lair) {
             const L = LAIRS[t.lair];
             me.gold += L.gold; me.sci += L.sci;
+            for (const k of RKEYS) if (L[k]) me[k] = (me[k] || 0) + L[k];
             reward = ` ${L.icon} Schatz: +${L.gold} Gold, +${L.sci} Wissen!`;
             log(st, `${L.icon} {0} besiegt den ${L.name} in ${t.name}! Schatz: +${L.gold} Gold, +${L.sci} Wissen.`, p);
             t.lair = null;
           }
           if (t.hut) {
             t.hut = false;
-            if (Math.random() < 0.5) { me.gold += 6; reward = ' Im Dorf: +6 Gold!'; } else { me.sci += 4; reward = ' Im Dorf: +4 Wissen!'; }
+            const r = Math.random();
+            if (r < 0.35) { me.gold += 6; reward = ' Im Dorf: +6 Gold!'; }
+            else if (r < 0.65) { me.sci += 4; reward = ' Im Dorf: +4 Wissen!'; }
+            else { me.food = (me.food || 0) + 3; me.wood = (me.wood || 0) + 3; me.stone = (me.stone || 0) + 2; reward = ' Im Dorf: +3 Nahrung, +3 Holz, +2 Stein!'; }
           }
           if (t.capital) { t.capital = false; t.building = 'fort'; log(st, `👑 {0} erobert die Hauptstadt ${t.name} von {1}!`, p, prev); }
           else if (prev >= 0) log(st, `⚔️ {0} erobert ${t.name} von {1}.` + reward, p, prev);
@@ -1167,21 +1209,26 @@
     }
 
     // 1b. Bedrohte Städte ummauern
-    if (lvl !== 'easy' && hasTech(st, p, 'fortification') && me.gold >= WALLS_COST + 4) {
+    if (lvl !== 'easy' && hasTech(st, p, 'fortification') && me.gold >= WALLS_COST + 4 && !lack(me, WALLS_COST, WALLS_NEED)) {
       const city = mine.find(i => isCity(C[i]) && !C[i].walls && enemyNear(i));
       if (city !== undefined) return { type: 'walls', cell: city };
     }
 
     // 2. Wirtschaft ausbauen
-    const ecoOpts = [];
+    const ecoOpts = [], inc0 = income(st, p);
     for (const i of mine) for (const b of Object.keys(BUILDINGS)) {
       if (b === 'fort' || b === 'tower' || b === 'barracks' || !canBuild(st, p, i, b)) continue;
-      const B = BUILDINGS[b];
-      ecoOpts.push({ i, b, cost: B.cost, s: ((B.gold || 0) + (B.sci || 0) * 1.3) / B.cost + (enemyNear(i) ? -0.3 : 0) });
+      const B = BUILDINGS[b], nd = B.need || {};
+      if (lack(me, B.cost, nd)) continue;
+      // knappe Rohstoffe sind mehr wert
+      const net = { food: inc0.food - inc0.feed, wood: inc0.wood, stone: inc0.stone };
+      const rv = RKEYS.reduce((v, k) => v + (B[k] || 0) * ((me[k] || 0) < 6 || net[k] <= 1 ? 1.1 : 0.4), 0);
+      const price = B.cost + RKEYS.reduce((v, k) => v + (nd[k] || 0), 0) * 0.6;
+      ecoOpts.push({ i, b, cost: B.cost, s: ((B.gold || 0) + (B.sci || 0) * 1.3 + rv) / price + (enemyNear(i) ? -0.3 : 0) });
     }
     ecoOpts.sort((x, y) => y.s - x.s);
     const eco = ecoOpts[0];
-    if (eco && me.gold >= eco.cost) {
+    if (eco) {
       const want = lvl === 'easy' ? rnd(4) === 0
         : lvl === 'medium' ? (st.round < 14 ? rnd(2) === 0 : rnd(5) === 0)
           : st.round < AI_CFG.hardEcoRounds || me.gold >= eco.cost + AI_CFG.hardEcoReserve;
@@ -1197,7 +1244,15 @@
       const has = t => unitUnlocked(st, p, t);
       const u = emptyU();
       let g = me.gold, room = city !== undefined ? roomIn(C[city]) : 0;
-      const buy = (t, n) => { n = Math.max(0, Math.min(n, room, Math.floor(g / UNITS[t].cost))); u[t] += n; g -= n * UNITS[t].cost; room -= n; };
+      const R = { food: me.food || 0, wood: me.wood || 0, stone: me.stone || 0 };
+      const buy = (t, n) => {
+        const nd = UNITS[t].need || {};
+        n = Math.min(n, room, Math.floor(g / UNITS[t].cost));
+        for (const k of RKEYS) if (nd[k]) n = Math.min(n, Math.floor(R[k] / nd[k]));
+        n = Math.max(0, n);
+        u[t] += n; g -= n * UNITS[t].cost; room -= n;
+        for (const k of RKEYS) R[k] -= n * (nd[k] || 0);
+      };
       if (city !== undefined) {
       const enemyPow = C[city].n.reduce((s, j) => s + (C[j].owner >= 0 && C[j].owner !== p && !allied(st, p, C[j].owner) ? total(C[j].u) : 0), 0);
       const threatened = enemyPow > total(C[city].u);
@@ -1310,7 +1365,7 @@
   }
 
   global.K = {
-    AI_CFG, WALLS_COST, divUnits, strongestType, capOf, roomIn, canRecruit, shootTargets, createGame, generateWorld, applyAction, aiAction, aiRespond, stats, income, provinceYield, score, allied, odds, total, avail,
+    AI_CFG, WALLS_COST, WALLS_NEED, RES, RKEYS, needOf, lack, maxAfford, divUnits, strongestType, capOf, roomIn, canRecruit, shootTargets, createGame, generateWorld, applyAction, aiAction, aiRespond, stats, income, provinceYield, score, allied, odds, total, avail,
     moveTargets, mpOf, canBuild, canResearch, unitUnlocked, hasTech, isCity, defMult, hexNeighbor, hexXY, emptyU, addU, upkeepFor,
     COLORS, UNITS, TYPES, TERRAIN, PSIZE, BUILDINGS, TECHS, MAPS, SIZES, MODES, LAIRS,
   };

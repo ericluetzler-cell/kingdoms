@@ -7,16 +7,16 @@
   const LEVELS = { easy: 'Leicht', medium: 'Mittel', hard: 'Schwer' };
   const BOT_NAMES = ['Graf Bruno', 'Lady Mira', 'König Otto', 'Baronin Ilse', 'Ritter Kunz', 'Herzogin Wanda', 'Fürst Egon', 'Gräfin Liv'];
   const ID_PREFIX = 'kingdoms-game-';
-  const BLDG_ORDER = ['lumber', 'farm', 'mine', 'library', 'market', 'temple', 'caravan', 'tower', 'barracks', 'fort'];
-  const BUILD_CATS = { eco: ['lumber', 'farm', 'mine', 'library', 'market', 'temple', 'caravan'], mil: ['tower', 'barracks', 'fort', 'walls'], tools: ['demolish'] };
+  const BLDG_ORDER = ['farm', 'lumber', 'quarry', 'granary', 'mine', 'library', 'market', 'temple', 'caravan', 'tower', 'barracks', 'fort'];
+  const BUILD_CATS = { eco: ['farm', 'lumber', 'quarry', 'granary', 'mine', 'library', 'market', 'temple', 'caravan'], mil: ['tower', 'barracks', 'fort', 'walls'], tools: ['demolish'] };
   function bInfo(b) {
-    if (b === 'walls') return { name: 'Stadtmauern', cost: K.WALLS_COST, tech: 'fortification', desc: '+50 % Verteidigung', icon: '#walls', where: 'Hauptstadt oder Festung' };
-    if (b === 'demolish') return { name: 'Abreißen', cost: 0, tech: 'demolition', desc: '50 % der Kosten zurück', emoji: '🔨', where: 'eigene Gebäude und Mauern' };
+    if (b === 'walls') return { name: 'Stadtmauern', cost: K.WALLS_COST, need: K.WALLS_NEED, tech: 'fortification', desc: '+50 % Verteidigung', icon: '#walls', where: 'Hauptstadt oder Festung' };
+    if (b === 'demolish') return { name: 'Abreißen', cost: 0, need: {}, tech: 'demolition', desc: '50 % der Kosten zurück', emoji: '🔨', where: 'eigene Gebäude und Mauern' };
     const B = K.BUILDINGS[b];
     return { ...B, icon: b === 'fort' ? '#castle' : '#b-' + b, where: B.on.length === 4 ? 'überall' : B.on.map(t => K.TERRAIN[t].name).join(', ') };
   }
   const newSeed = () => (Math.random() * 2 ** 32) >>> 0;
-  const APP_VERSION = '18';
+  const APP_VERSION = '19';
   // nur zum Testen: mit ?debug in der Adresse ist der Spielzustand in der Konsole erreichbar
   const DEBUG = new URLSearchParams(location.search).has('debug');
 
@@ -35,8 +35,14 @@
     get(k) { try { return localStorage.getItem(k); } catch { return null; } },
     set(k, v) { try { localStorage.setItem(k, v); } catch { /* egal */ } },
   };
+  const PID = store.get('kingdoms-pid') || (() => { const v = Math.random().toString(36).slice(2, 12); store.set('kingdoms-pid', v); return v; })();
   const coin = n => `<span class="amt"><i class="coin"></i>${n}</span>`;
   const scroll = n => `<span class="amt"><i class="scroll">📜</i>${n}</span>`;
+  const resAmt = (k, n) => `<span class="amt" title="${K.RES[k].name}"><i class="ri">${K.RES[k].icon}</i>${n}</span>`;
+  // Preis für Karten: Gold und Rohstoffe, fehlende rot
+  const price = (gold, need, pl) => `<em class="price">${gold ? `<span class="${pl && pl.gold < gold ? 'miss' : ''}">${gold}<i class="coin"></i></span>` : ''}${K.RKEYS.filter(k => need && need[k])
+    .map(k => `<span class="${pl && (pl[k] || 0) < need[k] ? 'miss' : ''}">${need[k]}<i class="ri">${K.RES[k].icon}</i></span>`).join('')}</em>`;
+  const priceText = (gold, need) => [gold ? gold + ' Gold' : '', ...K.RKEYS.filter(k => need && need[k]).map(k => `${need[k]} ${K.RES[k].name}`)].filter(Boolean).join(', ');
 
   if (DEBUG) window.__kingdoms = { S, render: () => render() };
 
@@ -90,7 +96,7 @@
   // ---------- Profil: eigenes Bild und Lieblingsfarbe ----------
 
   const PROFILE = { color: K.COLORS.includes(store.get('kingdoms-color')) ? store.get('kingdoms-color') : K.COLORS[0], avatar: store.get('kingdoms-avatar') || null };
-  const me0 = () => ({ name: myName(), type: 'human', cid: 'host', color: PROFILE.color, avatar: PROFILE.avatar });
+  const me0 = () => ({ name: myName(), type: 'human', cid: 'host', pid: PID, color: PROFILE.color, avatar: PROFILE.avatar });
   // Profilbild oder – ohne Bild – der Anfangsbuchstabe in der Reichsfarbe
   const avatarHTML = (avatar, name, color, cls = '') => (avatar
     ? `<img class="ava ${cls}" src="${avatar}" alt="">`
@@ -288,7 +294,7 @@
     document.title = 'Kingdoms';
   }
 
-  function toMenu() { resetSession(); show('menu'); menuPanel('main'); }
+  function toMenu() { resetSession(); show('menu'); menuPanel('main'); renderResume(); }
 
   // ---------- Weltenschmiede: eigene Welten gestalten ----------
 
@@ -599,14 +605,19 @@
     return c;
   }
 
-  function openHostPeer() {
-    S.code = newCode();
-    renderLobby();
+  function openHostPeer(keep, tries = 0) {
+    S.code = keep || newCode();
+    if (!keep) renderLobby();
     const peer = new Peer(ID_PREFIX + S.code);
     S.peer = peer;
-    peer.on('open', () => renderLobby());
+    peer.on('open', () => { if (keep) toast(`Raum ${S.code} ist wieder offen – deine Freunde können zurückkommen.`); else renderLobby(); });
     peer.on('error', err => {
-      if (err.type === 'unavailable-id') { peer.destroy(); openHostPeer(); return; }
+      if (err.type === 'unavailable-id') {
+        peer.destroy();
+        // nach dem Neuladen ist der alte Raum-Code noch kurz belegt – ein paar Mal neu versuchen
+        if (keep && tries < 12) { setTimeout(() => { if (S.role === 'host' && S.code === keep) openHostPeer(keep, tries + 1); }, 2500); return; }
+        openHostPeer(); return;
+      }
       toast('Verbindungsfehler: ' + err.type);
     });
     peer.on('connection', conn => {
@@ -614,6 +625,23 @@
       conn.on('close', () => onGuestLeft(conn));
     });
   }
+
+  const deadConn = c => {
+    const pc = c.peerConnection, cs = pc && (pc.connectionState || pc.iceConnectionState);
+    if (!c.open || cs === 'failed' || cs === 'closed') return true;
+    if (cs === 'disconnected') { c._lost = c._lost || Date.now(); return Date.now() - c._lost > 12000; }
+    c._lost = 0;
+    return false;
+  };
+  setInterval(() => {
+    if (S.role === 'host') {
+      for (const c of [...S.conns.values()]) if (deadConn(c)) { try { c.close(); } catch { /* egal */ } onGuestLeft(c); }
+    } else if (S.role === 'guest' && S.conn && S.conn._ok && deadConn(S.conn)) {
+      const c = S.conn;
+      try { c.close(); } catch { /* egal */ }
+      if (c._onLost) c._onLost();
+    }
+  }, 4000);
 
   function broadcast(msg) {
     if (S.role !== 'host') return;
@@ -636,13 +664,13 @@
   function onHostData(conn, d) {
     if (!d || typeof d !== 'object') return;
     if (d.t === 'join') {
-      if (S.state) return conn.send({ t: 'err', msg: 'Das Spiel läuft bereits.', fatal: true });
+      if (S.state) return rejoin(conn, d);
       if (d.v !== APP_VERSION) return conn.send({ t: 'err', msg: 'Ihr habt verschiedene Versionen von Kingdoms. Bitte beide die Seite neu laden (Strg+F5 bzw. am Handy neu öffnen).', fatal: true });
       if (S.lobby.length >= 6) return conn.send({ t: 'err', msg: 'Der Raum ist voll.', fatal: true });
       S.conns.set(conn.peer, conn);
       const usedC = S.lobby.map(x => x.color);
       const color = K.COLORS.includes(d.color) && !usedC.includes(d.color) ? d.color : K.COLORS.find(c => !usedC.includes(c));
-      S.lobby.push({ name: String(d.name || 'Gast').slice(0, 16), type: 'human', cid: conn.peer, color, avatar: safeAvatar(d.avatar) });
+      S.lobby.push({ name: String(d.name || 'Gast').slice(0, 16), type: 'human', cid: conn.peer, pid: String(d.pid || '').slice(0, 20) || null, color, avatar: safeAvatar(d.avatar) });
       return lobbyChanged();
     }
     if (d.t === 'action' && S.state) {
@@ -665,6 +693,29 @@
     }
   }
 
+  // Wer die Verbindung verloren hat, kann zurück in sein Reich (erkannt an der Geräte-ID oder am Namen)
+  function rejoin(conn, d) {
+    const st = S.state;
+    if (d.v !== APP_VERSION) return conn.send({ t: 'err', msg: 'Ihr habt verschiedene Versionen von Kingdoms. Bitte beide die Seite neu laden (Strg+F5 bzw. am Handy neu öffnen).', fatal: true });
+    const nm = String(d.name || '').trim().toLowerCase();
+    // gleiche Geräte-ID: auch wenn die alte Verbindung noch nicht als getrennt erkannt wurde
+    let p = st.players.findIndex(x => x.pid && x.pid === d.pid && x.cid !== 'host' && (x.away || (x.type === 'human' && x.cid !== conn.peer)));
+    if (p < 0) p = st.players.findIndex(x => x.away && x.name.toLowerCase() === nm);
+    const old = p >= 0 && st.players[p].cid && S.conns.get(st.players[p].cid);
+    if (old) { S.conns.delete(st.players[p].cid); try { old.close(); } catch { /* egal */ } }
+    if (p < 0) return conn.send({ t: 'err', msg: 'Das Spiel läuft bereits – nur Spieler, die rausgeflogen sind, können wieder beitreten.', fatal: true });
+    if (!st.players[p].alive) return conn.send({ t: 'err', msg: 'Dein Reich wurde inzwischen vernichtet.', fatal: true });
+    S.conns.set(conn.peer, conn);
+    Object.assign(st.players[p], { type: 'human', level: null, cid: conn.peer, away: false, pid: d.pid || st.players[p].pid });
+    if (S.lobby[p]) Object.assign(S.lobby[p], { cid: conn.peer, type: 'human' });
+    st.logN = (st.logN || 0) + 1;
+    st.log.push({ m: '🔌 {0} ist zurück und übernimmt wieder das eigene Reich.', ps: [p], n: st.logN });
+    conn.send({ t: 'lobby', lobby: S.lobby, code: S.code, settings: S.settings });
+    conn.send({ t: 'geo', geo: st.geo });
+    toast(`${st.players[p].name} ist zurück!`);
+    afterChange();
+  }
+
   // Gastgeber wirft jemanden raus: in der Lobby verschwindet er, im Spiel übernimmt die KI sein Reich
   function kickPlayer(cid) {
     const c = S.conns.get(cid);
@@ -674,7 +725,7 @@
     if (S.state) {
       const p = S.state.players.findIndex(x => x.cid === cid);
       if (p >= 0) {
-        Object.assign(S.state.players[p], { type: 'ai', level: 'medium', cid: null });
+        Object.assign(S.state.players[p], { type: 'ai', level: 'medium', cid: null, pid: null, away: false });
         S.state.log.push({ m: '👢 {0} wurde vom Gastgeber entfernt – die KI übernimmt.', ps: [p] });
       }
       afterChange();
@@ -686,12 +737,13 @@
   }
 
   function onGuestLeft(conn) {
+    if (S.conns.get(conn.peer) !== conn) return;
     S.conns.delete(conn.peer);
     if (S.state) {
       const p = S.state.players.findIndex(x => x.cid === conn.peer);
       if (p >= 0 && S.state.players[p].type === 'human') {
-        Object.assign(S.state.players[p], { type: 'ai', level: 'medium', cid: null });
-        S.state.log.push({ m: '📡 {0} hat das Spiel verlassen – die KI übernimmt.', ps: [p] });
+        Object.assign(S.state.players[p], { type: 'ai', level: 'medium', cid: null, away: true });
+        S.state.log.push({ m: '📡 {0} hat die Verbindung verloren – die KI übernimmt, bis {0} wieder beitritt.', ps: [p] });
         afterChange();
       }
     } else {
@@ -710,14 +762,29 @@
     peer.on('open', () => {
       const conn = peer.connect(ID_PREFIX + code, { reliable: true });
       S.conn = conn;
-      conn.on('open', () => conn.send({ t: 'join', name: myName(), v: APP_VERSION, color: PROFILE.color, avatar: PROFILE.avatar }));
+      conn.on('open', () => { conn._ok = true; conn.send({ t: 'join', name: myName(), v: APP_VERSION, pid: PID, color: PROFILE.color, avatar: PROFILE.avatar }); });
       conn.on('data', onGuestData);
-      conn.on('close', () => { if (S.role === 'guest' && conn === S.conn) { toast('Verbindung zum Gastgeber verloren.'); toMenu(); } });
+      conn.on('close', () => conn._onLost && conn._onLost());
+      conn._onLost = () => {
+        conn._onLost = null;
+        if (S.role !== 'guest' || conn !== S.conn) return;
+        const inGame = !!S.state;
+        toMenu();
+        if (!inGame) return toast('Verbindung zum Gastgeber verloren.');
+        ask('📡 Die Verbindung zum Gastgeber ist abgebrochen. Bis du zurück bist, spielt die KI für dich.', '🔌 Wieder beitreten').then(ok => { if (ok) rejoinRoom(code); });
+      };
     });
     peer.on('error', err => {
-      toast(err.type === 'peer-unavailable' ? 'Raum nicht gefunden.' : 'Verbindungsfehler: ' + err.type);
+      toast(err.type === 'peer-unavailable' ? 'Raum nicht gefunden – vielleicht ist das Spiel schon vorbei.' : 'Verbindungsfehler: ' + err.type);
       if (err.type === 'peer-unavailable') toMenu();
     });
+  }
+
+  function rejoinRoom(code) {
+    if (!window.Peer) return toast('Online-Modul konnte nicht geladen werden – Internetverbindung prüfen.');
+    resetSession();
+    S.role = 'guest';
+    joinRoom(code);
   }
 
   function onGuestData(d) {
@@ -731,7 +798,7 @@
       const first = !S.state;
       S.state = { ...d.state, geo: S.geo };
       S.me = S.state.players.findIndex(p => p.cid === S.peer.id);
-      if (first) { show('game'); S.avatars = S.lobby.map(p => p.avatar || null); }
+      if (first) { show('game'); S.avatars = S.lobby.map(p => p.avatar || null); store.set('kingdoms-lastroom', JSON.stringify({ code: S.code, t: Date.now() })); renderResume(); }
       render();
     } else if (d.t === 'chat') { S.chat.push(d.msg); renderChat(); }
     else if (d.t === 'err') {
@@ -747,6 +814,8 @@
       if (n < S.lobby.length * 2) { toast(`Die Welt „${S.settings.world.name}“ hat nur ${n} Provinzen – zu wenig für ${S.lobby.length} Herrscher.`); return; }
     }
     S.state = K.createGame(S.lobby, { ...gameOpts(S.settings), ...extra });
+    S.state.players.forEach((p, i) => { p.pid = S.lobby[i].pid || null; });
+    setTimeout(saveGame, 0);
     S.avatars = S.lobby.map(p => p.avatar || null);
     S.me = 0;
     Object.assign(S, { sel: -1, selDivs: null, split: null, plan: null, seenBattle: 0, seenMarch: 0, turnKey: '', nationKey: '' });
@@ -766,7 +835,56 @@
     afterChange();
   }
 
+  function saveGame() {
+    if (!S.state || S.tut || (S.role !== 'local' && S.role !== 'host')) return;
+    try {
+      localStorage.setItem('kingdoms-save', JSON.stringify({ v: APP_VERSION, role: S.role, code: S.code, state: S.state, lobby: S.lobby, settings: S.settings, t: Date.now() }));
+    } catch { /* Speicher voll – dann eben nicht */ }
+  }
+  function loadSave() {
+    try { const d = JSON.parse(localStorage.getItem('kingdoms-save') || 'null'); return d && d.state && !d.state.over ? d : null; } catch { return null; }
+  }
+  function lastRoom() {
+    try { const d = JSON.parse(store.get('kingdoms-lastroom') || 'null'); return d && Date.now() - d.t < 12 * 3600e3 ? d : null; } catch { return null; }
+  }
+  // Knöpfe „Spiel fortsetzen“ und „Zurück in Raum …“ im Hauptmenü
+  function renderResume() {
+    const sv = loadSave(), lr = lastRoom(), box = $('#resumeBox');
+    if (!box) return;
+    const when = t => new Date(t).toLocaleString('de-DE', { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+    box.innerHTML = (sv ? `<button class="menu-btn featured" id="btnResume"><span class="mb-ico">▶️</span><span><b>Spiel fortsetzen</b>
+        <small>${sv.role === 'host' ? `Online-Raum ${esc(sv.code)}` : 'Einzelspieler'} · Runde ${sv.state.round} · ${when(sv.t)}</small></span></button>` : '') +
+      (lr ? `<button class="menu-btn" id="btnRejoin"><span class="mb-ico">🔌</span><span><b>Zurück in Raum ${esc(lr.code)}</b>
+        <small>Wieder in dein Online-Spiel einsteigen</small></span></button>` : '');
+    box.hidden = !sv && !lr;
+  }
+  document.addEventListener('click', e => {
+    if (e.target.closest('#btnRejoin')) { const lr = lastRoom(); if (lr) rejoinRoom(lr.code); }
+    if (e.target.closest('#btnResume')) resumeGame();
+  });
+  function resumeGame() {
+    const sv = loadSave();
+    if (!sv) { renderResume(); return toast('Kein gespeichertes Spiel gefunden.'); }
+    if (sv.role === 'host' && !window.Peer) return toast('Online-Modul konnte nicht geladen werden – Internetverbindung prüfen.');
+    resetSession();
+    S.role = sv.role; S.state = sv.state; S.lobby = sv.lobby; S.settings = sv.settings; S.me = 0;
+    S.avatars = S.lobby.map(p => p.avatar || null);
+    const st = S.state;
+    for (const p of st.players) for (const k of K.RKEYS) if (p[k] == null) p[k] = 4;
+    Object.assign(S, { seenBattle: st.battle ? st.battle.id : 0, seenMarch: st.march ? st.march.id : 0, seenVolley: st.volley ? st.volley.id : 0,
+      seenCrown: st.crownEvent ? st.crownEvent.id : 0, seenDemo: st.demolish ? st.demolish.id : 0, lastLogN: st.logN || 0 });
+    if (sv.role === 'host') {
+      // Gäste sind beim Neuladen rausgeflogen – die KI spielt für sie, bis sie wieder beitreten
+      st.players.forEach((p, i) => { if (i !== 0 && p.type === 'human') Object.assign(p, { type: 'ai', level: 'medium', cid: null, away: true }); });
+      openHostPeer(sv.code);
+    }
+    show('game');
+    render();
+    scheduleAI();
+  }
+
   function afterChange() {
+    saveGame();
     broadcastState(false);
     render();
     scheduleAI();
@@ -1166,6 +1284,7 @@
             `<g transform="translate(${bx + dx} ${by + dy}) rotate(${rot})"><rect class="field" x="-6" y="-3.5" width="12" height="7" rx=".8"/>
               <path class="furrow" d="M-6 -1.6 H6 M-6 .2 H6 M-6 2 H6"/></g>`).join('');
         } else if (c.building === 'mine') art = `<path class="spoil" d="M${bx - 9} ${by + 8} q5 -6 10 0 z"/>`;
+        else if (c.building === 'quarry') art = `<path class="spoil" d="M${bx + 5} ${by + 9} l3 -4 l3 4 z M${bx - 11} ${by + 8} l2.5 -3.5 l2.5 3.5 z"/>`;
         else if (c.building === 'lumber') art = `<path class="stump" d="M${bx + 7} ${by + 6} h3 v2 h-3 z M${bx - 10} ${by + 7} h3 v2 h-3 z"/>`;
         html += `<g class="bldg${fresh ? ' fresh' : ''}" style="transform-origin:${bx}px ${by + 8}px">${art}
           <use href="#b-${c.building}" x="${bx - 9}" y="${by - 9}" width="18" height="18" filter="url(#f-soft)"/></g>`;
@@ -1333,8 +1452,8 @@
     } else if (truceProtected(i) && c.owner !== S.me) extra = `<div class="tag">🕊️ Friedenszeit bis Runde ${st.truce}</div>`;
     box.innerHTML = `<div class="ihead"><b>${esc(c.name)}</b><span>${c.owner >= 0 ? pName(c.owner) : '<span class="tag">Neutral</span>'}</span></div>
       <div class="chips">${chips}</div>
-      <div class="tag">Ertrag pro Runde: ${coin('+' + y.gold)}${y.sci ? ' ' + scroll('+' + y.sci) : ''}${c.owner < 0 ? ' (nach Eroberung)' : ''}</div>
-      ${c.hut ? '<div class="tag">Erobern bringt Gold oder Wissen</div>' : ''}
+      <div class="tag">Ertrag pro Runde: ${coin('+' + y.gold)}${y.sci ? ' ' + scroll('+' + y.sci) : ''}${K.RKEYS.filter(k => y[k]).map(k => ' ' + resAmt(k, '+' + y[k])).join('')}${c.owner < 0 ? ' (nach Eroberung)' : ''}</div>
+      ${c.hut ? '<div class="tag">Erobern bringt Gold, Wissen oder Rohstoffe</div>' : ''}
       ${myTurn() && S.mode === 'build' && c.owner === S.me ? `<div class="buildable">🔨 Hier baubar: ${[...BLDG_ORDER.filter(b => K.canBuild(st, S.me, i, b)).map(b => K.BUILDINGS[b].name), ...(K.isCity(c) && !c.walls && K.hasTech(st, S.me, 'fortification') ? ['Stadtmauern'] : [])].join(', ') || (c.building ? `nichts – hier steht schon ${K.BUILDINGS[c.building].name}` : 'nichts (Forschung oder Gelände fehlt)')}</div>` : ''}
       ${L ? `<div class="treasure">💰 Schatz: +${L.gold} Gold, +${L.sci} Wissen – besiege die Monster!</div>` : ''}
       ${c.owner >= 0 ? `<div class="tag">Truppen ${K.total(c.u)} / ${K.capOf(c)} (Platz in der Provinz)</div>` : ''}
@@ -1352,7 +1471,8 @@
       const s = K.stats(st, S.me);
       $('#res').innerHTML = `<span title="Gold: Einnahmen ${s.gross} − Unterhalt ${s.upkeep} = ${s.income} pro Runde">${coin(pl.gold)}<small>${s.income >= 0 ? '+' : ''}${s.income}</small></span><span class="sep"></span>
         <span title="Wissen: für Forschung">${scroll(pl.sci)}<small>+${s.sciIncome}</small></span><span class="sep"></span>
-        <span title="Deine Provinzen">🏳️ ${s.cells}</span><span class="sep"></span>
+        ${K.RKEYS.map(k => `<span class="rs" title="${K.RES[k].name}: ${s[k + 'Income'] >= 0 ? '+' : ''}${s[k + 'Income']} pro Runde${k === 'food' ? ` (Armeen essen ${s.feed})` : ''}">${resAmt(k, s[k])}<small class="${s[k + 'Income'] < 0 ? 'neg' : ''}">${s[k + 'Income'] >= 0 ? '+' : ''}${s[k + 'Income']}</small></span>`).join('')}<span class="sep"></span>
+        <span class="cells" title="Deine Provinzen">🏳️ ${s.cells}</span><span class="sep cells"></span>
         <span title="Deine Truppen (Unterhalt ${s.upkeep} Gold pro Runde)">⚔️ ${s.troops}</span>`;
     }
     const canRes = pl && Object.keys(K.TECHS).some(t => K.canResearch(st, S.me, t) && pl.sci >= K.TECHS[t].cost);
@@ -1409,10 +1529,10 @@
     if (S.mode === 'recruit') {
       const btn = t => {
         const u = K.UNITS[t], locked = !K.unitUnlocked(st, S.me, t);
-        return `<button class="card-btn ${S.unit === t ? 'on' : ''} ${locked ? 'locked' : ''}" data-unit="${t}" ${locked || gold < u.cost ? 'disabled' : ''}
+        return `<button class="card-btn ${S.unit === t ? 'on' : ''} ${locked ? 'locked' : ''}" data-unit="${t}" ${locked || K.lack(pl, u.cost, u.need) ? 'disabled' : ''}
             title="${u.name}: Angriff ${u.atk}, Verteidigung ${u.def}, Bewegung ${u.mp}${u.note ? ' – ' + u.note : ''}">
           <svg class="ico"><use href="#u-${t}"/></svg>
-          <span><b>${u.name}</b><small>${locked ? '🔒 ' + K.TECHS[u.tech].name : `A${u.atk} · V${u.def} · Bew. ${u.mp}`}</small></span><em>${u.cost}<i class="coin"></i></em></button>`;
+          <span><b>${u.name}</b><small>${locked ? '🔒 ' + K.TECHS[u.tech].name : `A${u.atk} · V${u.def} · Bew. ${u.mp}`}</small></span>${price(u.cost, u.need, pl)}</button>`;
       };
       status = `Tippe auf deine Hauptstadt 👑${K.hasTech(st, S.me, 'masonry') ? ', eine Festung' : ''}${K.hasTech(st, S.me, 'drill') ? ' oder eine Kaserne' : ''} – neue Truppen bilden eine eigene Division`;
       right = `<div class="amount"><button data-amt="1" class="${S.amount === 1 ? 'on' : ''}">×1</button><button data-amt="5" class="${S.amount === 5 ? 'on' : ''}">×5</button></div>`;
@@ -1427,9 +1547,9 @@
       const closed = list.filter(b => !open.includes(b));
       const card = b => {
         const I = bInfo(b), locked = I.tech && !K.hasTech(st, S.me, I.tech);
-        return `<button class="card-btn ${S.bldg === b ? 'on' : ''} ${locked ? 'locked' : ''}" data-bldg="${b}" ${locked || gold < I.cost ? 'disabled' : ''} title="${I.name}: ${I.desc}. Wo: ${I.where}">
+        return `<button class="card-btn ${S.bldg === b ? 'on' : ''} ${locked ? 'locked' : ''}" data-bldg="${b}" ${locked || K.lack(pl, I.cost, I.need || {}) ? 'disabled' : ''} title="${I.name}: ${I.desc}. Kosten: ${priceText(I.cost, I.need)}. Wo: ${I.where}">
           ${I.emoji ? `<span class="demo-ico">${I.emoji}</span>` : `<svg class="ico"><use href="${I.icon}" style="color:${pl.color}"/></svg>`}
-          <span><b>${I.name}</b><small>${locked ? '🔒 ' + K.TECHS[I.tech].name : I.desc}</small></span>${I.cost ? `<em>${I.cost}<i class="coin"></i></em>` : ''}</button>`;
+          <span><b>${I.name}</b><small>${locked ? '🔒 ' + K.TECHS[I.tech].name : I.desc}</small></span>${I.cost ? price(I.cost, I.need, pl) : ''}</button>`;
       };
       const cats = `<div class="cats">${[['eco', '🌾 Wirtschaft'], ['mil', '🛡️ Militär'], ['tools', '🔨 Werkzeuge']]
         .map(([k, l]) => `<button data-bcat="${k}" class="${S.bcat === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
@@ -1516,17 +1636,18 @@
     const c = st.cells[i], gold = st.players[S.me].gold;
     if (S.mode === 'recruit' && !dropped) {
       if (c.owner !== S.me || !K.canRecruit(c)) return toast('Einheiten bildest du in deiner Hauptstadt 👑, in Festungen oder Kasernen aus.');
-      const cost = K.UNITS[S.unit].cost;
-      const n = Math.min(S.amount, Math.floor(gold / cost));
-      if (n < 1) return toast(`Zu wenig Gold – ein ${K.UNITS[S.unit].name} kostet ${cost}.`);
+      const U = K.UNITS[S.unit];
+      const n = Math.min(S.amount, K.maxAfford(st.players[S.me], S.unit));
+      if (n < 1) return toast(`Zu wenig – ein ${U.name} kostet ${priceText(U.cost, U.need)}.`);
       return act({ type: 'recruit', cell: i, units: { [S.unit]: n } });
     }
     if (S.mode === 'build' && !dropped) {
       if (S.bldg === 'walls') return act({ type: 'walls', cell: i });
       if (S.bldg !== 'demolish') return act({ type: 'build', cell: i, b: S.bldg });
       if (c.owner !== S.me || (!c.building && !c.walls)) return toast('Tippe auf eines deiner Gebäude oder eine Stadtmauer.');
-      const what = c.building ? K.BUILDINGS[c.building].name : 'Stadtmauern', cost = c.building ? K.BUILDINGS[c.building].cost : K.WALLS_COST;
-      ask(`${what} in ${esc(c.name)} abreißen? Du bekommst ${Math.floor(cost / 2)} Gold zurück.`, '🔨 Abreißen').then(ok => { if (ok) act({ type: 'demolish', cell: i }); });
+      const what = c.building ? K.BUILDINGS[c.building].name : 'Stadtmauern', B = c.building ? K.BUILDINGS[c.building] : { cost: K.WALLS_COST, need: K.WALLS_NEED };
+      const half = {}; for (const k of K.RKEYS) half[k] = Math.floor(((B.need || {})[k] || 0) / 2);
+      ask(`${what} in ${esc(c.name)} abreißen? Du bekommst ${priceText(Math.floor(B.cost / 2), half) || 'nichts'} zurück.`, '🔨 Abreißen').then(ok => { if (ok) act({ type: 'demolish', cell: i }); });
       return;
     }
     if (S.shootFrom >= 0) {
@@ -1734,7 +1855,7 @@
     $('#research').innerHTML = `<div class="modal wide">
       <div class="mhead"><h2>🔬 Forschung</h2><span>${scroll(pl.sci)} Wissen <small class="tag">(+${K.stats(st, S.me).sciIncome} pro Runde)</small></span>
         <button data-close class="ghost" title="Schließen (Esc)">✕</button></div>
-      <p class="tag">Wissen kommt aus deiner Hauptstadt, von Holzfällern und Bibliotheken. Jede Technologie schaltet etwas Neues frei.${myTurn() ? '' : ' Forschen kannst du nur in deinem Zug.'}</p>
+      <p class="tag">Wissen kommt aus deiner Hauptstadt, von Sägewerken und Bibliotheken. Jede Technologie schaltet etwas Neues frei.${myTurn() ? '' : ' Forschen kannst du nur in deinem Zug.'}</p>
       <div class="tiers">${tiers}</div></div>`;
   }
 
@@ -1748,16 +1869,16 @@
   function openHelp() {
     const units = K.TYPES.filter(t => !K.UNITS[t].monster).map(t => {
       const u = K.UNITS[t];
-      return `<tr><td><svg class="ico"><use href="#u-${t}"/></svg> ${u.name}</td><td>${u.cost}</td><td>${u.atk}</td><td>${u.def}</td><td>${u.mp}</td>
+      return `<tr><td><svg class="ico"><use href="#u-${t}"/></svg> ${u.name}</td><td>${priceText(u.cost, u.need)}</td><td>${u.atk}</td><td>${u.def}</td><td>${u.mp}</td>
         <td>${u.tech ? K.TECHS[u.tech].name : '–'}${u.note ? `<br><small>${u.note}</small>` : ''}</td></tr>`;
     }).join('');
     const bldgs = BLDG_ORDER.map(b => {
       const B = K.BUILDINGS[b];
-      return `<tr><td><svg class="ico"><use href="${b === 'fort' ? '#castle' : '#b-' + b}" style="color:#e8b64c"/></svg> ${B.name}</td><td>${B.cost}</td>
+      return `<tr><td><svg class="ico"><use href="${b === 'fort' ? '#castle' : '#b-' + b}" style="color:#e8b64c"/></svg> ${B.name}</td><td>${priceText(B.cost, B.need)}</td>
         <td>${B.desc}</td><td>${B.on.length === 4 ? 'überall' : B.on.map(t => K.TERRAIN[t].name).join(', ')}</td><td>${B.tech ? K.TECHS[B.tech].name : '–'}</td></tr>`;
     }).join('');
     const terr = Object.values(K.TERRAIN).map(T =>
-      `<tr><td>${T.name}</td><td>${T.gold}</td><td>${T.def ? '+' + Math.round(T.def * 100) + ' %' : '–'}</td></tr>`).join('');
+      `<tr><td>${T.name}</td><td>${T.gold}</td><td>${T.res ? '+1 ' + K.RES[T.res].icon + ' ' + K.RES[T.res].name : '–'}</td><td>${T.def ? '+' + Math.round(T.def * 100) + ' %' : '–'}</td></tr>`).join('');
     const sizes = Object.values(K.PSIZE).map(P =>
       `<tr><td>${P.name}</td><td>+${P.gold}</td><td>${P.def ? '+' + Math.round(P.def * 100) + ' %' : '–'}</td></tr>`).join('');
     $('#help').innerHTML = `<div class="modal wide help">
@@ -1767,7 +1888,7 @@
       <h3>Dein Zug</h3>
       <ol>
         <li><b>🔬 Forschen</b> – mit Wissen neue Einheiten, Gebäude und Boni freischalten.</li>
-        <li><b>🔨 Bauen</b> – Gebäude in eigenen Provinzen bringen jede Runde mehr Gold oder Wissen.</li>
+        <li><b>🔨 Bauen</b> – Gebäude in eigenen Provinzen bringen jede Runde mehr Gold, Wissen oder Rohstoffe.</li>
         <li><b>🛡️ Ausbilden</b> – Einheiten entstehen in der Hauptstadt und in Festungen.</li>
         <li><b>⚔️ Armeen</b> – wie bei Hearts of Iron steuerst du deine Truppen einzeln (siehe unten).</li>
         <li><b>Zug beenden</b> – nicht ausgegebenes Gold und Wissen bleiben erhalten.</li>
@@ -1783,6 +1904,10 @@
       <p>Im <b>Angriffsplan</b> wählst du Divisionen aus <b>allen angrenzenden Provinzen</b>, die gemeinsam angreifen. Die <b>Angriffskraft</b> wird mit der <b>Verteidigungskraft</b>
         (Verteidigungswerte × Gelände-, Größen- und Festungsbonus) verglichen. Daraus ergibt sich die <b>Siegchance</b>.
         Gewinnst du, ziehen die Überlebenden ein. Verlierst du, ist die Angriffsarmee verloren.</p>
+      <h3>Rohstoffe</h3>
+      <p>Neben <b>Gold</b> und <b>📜 Wissen</b> gibt es drei Rohstoffe: <b>🌾 Nahrung</b> (Ebenen, Flüsse, Bauernhöfe), <b>🪵 Holz</b> (Wälder, Sägewerke) und <b>🪨 Stein</b> (Gebirge, Steinbrüche).
+        Jede Provinz liefert jede Runde ihren Rohstoff, große Provinzen etwas mehr; die Hauptstadt liefert von allem ein bisschen.
+        Soldaten brauchen Nahrung, Bogen und Belagerungswaffen Holz, Festungen, Türme, Tempel und Mauern Stein. Oben siehst du deinen Vorrat und was pro Runde dazukommt.<br>Armeen essen: je 4 Einheiten 1 🌾 Nahrung pro Runde. Fehlt Nahrung, wird sie mit Gold zugekauft.</p>
       <h3>Unterhalt</h3>
       <p>Armeen kosten Sold: je 4 Einheiten 1 Gold pro Runde. Oben bei deinem Gold siehst du dein Einkommen nach Abzug des Unterhalts.</p>
       <h3>Karte</h3>
@@ -1791,12 +1916,12 @@
       <p>Große Provinzen sind schwerer zu erobern, bringen aber mehr Gold. Provinzen an Flüssen bringen +1 Gold.</p>
       <div class="tscroll"><table class="unit-table"><thead><tr><th>Größe</th><th>Gold</th><th>Verteidigung</th></tr></thead><tbody>${sizes}</tbody></table></div>
       <h3>Einheiten</h3>
-      <div class="tscroll"><table class="unit-table"><thead><tr><th>Einheit</th><th>Gold</th><th>Angriff</th><th>Verteid.</th><th>Bewegung</th><th>Benötigt</th></tr></thead><tbody>${units}</tbody></table></div>
+      <div class="tscroll"><table class="unit-table"><thead><tr><th>Einheit</th><th>Kosten</th><th>Angriff</th><th>Verteid.</th><th>Bewegung</th><th>Benötigt</th></tr></thead><tbody>${units}</tbody></table></div>
       <h3>Gebäude</h3>
-      <div class="tscroll"><table class="unit-table"><thead><tr><th>Gebäude</th><th>Gold</th><th>Wirkung</th><th>Gelände</th><th>Benötigt</th></tr></thead><tbody>${bldgs}</tbody></table></div>
+      <div class="tscroll"><table class="unit-table"><thead><tr><th>Gebäude</th><th>Kosten</th><th>Wirkung</th><th>Gelände</th><th>Benötigt</th></tr></thead><tbody>${bldgs}</tbody></table></div>
       <h3>Gelände</h3>
-      <div class="tscroll"><table class="unit-table"><thead><tr><th>Gelände</th><th>Gold</th><th>Verteidigung</th></tr></thead><tbody>${terr}</tbody></table></div>
-      <p>Die Hauptstadt bringt zusätzlich +3 Gold und +2 Wissen und verteidigt +50 %. 🛖 Dörfer geben beim Erobern Gold oder Wissen.</p>
+      <div class="tscroll"><table class="unit-table"><thead><tr><th>Gelände</th><th>Gold</th><th>Rohstoff</th><th>Verteidigung</th></tr></thead><tbody>${terr}</tbody></table></div>
+      <p>Die Hauptstadt bringt zusätzlich +3 Gold, +2 Wissen, +2 Nahrung, +1 Holz und +1 Stein und verteidigt +50 %. 🛖 Dörfer geben beim Erobern Gold, Wissen oder Rohstoffe.</p>
       <h3>Tastenkürzel</h3>
       <p><b>Leertaste</b> Zug beenden · <b>1 / 2 / 3</b> Ausbilden / Bauen / Armeen · <b>R</b> Forschung · <b>H</b> Hilfe · <b>F</b> ganze Karte · <b>Esc</b> abbrechen · <b>Enter</b> Angriff bestätigen</p>
       <h3>Schwierigkeit</h3>
@@ -1806,12 +1931,12 @@
         Jeder Schütze trifft mit etwa 55 % (Gelände, Größe und Festungen schützen). Pfeile treffen nur leichte Einheiten mit Verteidigung bis 3 – Trolle und Drachen sind zu zäh.<br>
         Mit der Forschung <b>🔨 Abrissarbeiten</b> kannst du unter „Bauen“ eigene Gebäude abreißen und bekommst die Hälfte der Kosten zurück.</p>
       <h3>Stadtmauern</h3>
-      <p>Mit der Forschung <b>🧱 Befestigung</b> baust du unter „Bauen → Militär“ Stadtmauern um Hauptstadt und Festungen (${K.WALLS_COST} Gold): +50 % Verteidigung.
+      <p>Mit der Forschung <b>🧱 Befestigung</b> baust du unter „Bauen → Militär“ Stadtmauern um Hauptstadt und Festungen (${priceText(K.WALLS_COST, K.WALLS_NEED)}): +50 % Verteidigung.
         Katapulte und Triboke brechen Mauern nur zur Hälfte (+25 % bleiben). Eroberte Mauern gehören dem Eroberer.</p>
       <h3>Truppenlimit</h3>
-      <p>In jede Provinz passen nur begrenzt viele Truppen: klein 8, mittel 10, groß 12 – Hauptstädte und Festungen +6. Das gilt beim Ausbilden, Marschieren und Angreifen.</p>
+      <p>In jede Provinz passen nur begrenzt viele Truppen: klein 18, mittel 20, groß 22 – Hauptstädte und Festungen +6. Das gilt beim Ausbilden, Marschieren und Angreifen.</p>
       <h3>Monster</h3>
-      <p>${Object.values(K.LAIRS).map(L => `<b>${L.icon} ${L.name}</b>: Schatz +${L.gold} Gold, +${L.sci} Wissen`).join('<br>')}<br>
+      <p>${Object.values(K.LAIRS).map(L => `<b>${L.icon} ${L.name}</b>: Schatz +${L.gold} Gold, +${L.sci} Wissen${K.RKEYS.filter(k => L[k]).map(k => `, +${L[k]} ${K.RES[k].name}`).join('')}`).join('<br>')}<br>
         Monster bleiben in ihrem Hort. Wer sie besiegt, bekommt den Schatz und die Provinz. Wölfe sind leicht, Trolle zäh (Verteidigung 5), Drachen sehr stark (Verteidigung 16).</p>
       <h3>Spielmodi</h3>
       <p><b>⚔️ Klassisch:</b> Vernichte alle Gegner – oder hab nach 40 Runden die meisten Punkte.<br>
@@ -1850,7 +1975,7 @@
     { title: '', text: () => (S.state.battle && S.state.battle.won
       ? '<b>Erobert!</b> Die Provinz gehört jetzt dir und bringt jede Runde Gold. Die Division hat sich für diesen Zug verausgabt (blasse Figur). Provinzen mit 🛖 Dorf geben beim Erobern eine Belohnung.'
       : '<b>Verloren</b> – das passiert! Je höher die Siegchance, desto sicherer. Greife am besten mit Übermacht an. <b>Große Provinzen</b> und Gebirge sind schwerer einzunehmen.'), next: 'Weiter' },
-    { title: 'Gebäude bauen', text: 'Gebäude bringen mehr Ertrag. Wechsle zu <b>🔨 Bauen</b>, wähle den <b>Holzfäller</b> und tippe auf eine <b>eigene Waldprovinz</b> 🌲 (gelb markiert). Gehört dir noch kein Wald, erobere zuerst einen.',
+    { title: 'Gebäude bauen', text: 'Gebäude bringen mehr Ertrag. Wechsle zu <b>🔨 Bauen</b>, wähle das <b>Sägewerk</b> und tippe auf eine <b>eigene Waldprovinz</b> 🌲 (gelb markiert) – es liefert Holz 🪵. Gehört dir noch kein Wald, erobere zuerst einen.',
       cell: () => S.state.cells.findIndex((c, i) => K.canBuild(S.state, S.me, i, 'lumber')),
       on: ev => ev.kind === 'action' && ev.a.type === 'build', skip: true },
     { title: 'Zug beenden', text: 'Für diese Runde reicht es. Tippe auf <b>Zug beenden</b> (oder drücke die Leertaste). Danach ist dein Gegner dran.', el: '#bEnd', on: ev => ev.kind === 'action' && ev.a.type === 'end' },
@@ -2018,4 +2143,5 @@
   setInterval(checkVersion, 3 * 60 * 1000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) checkVersion(); });
   setTimeout(checkVersion, 4000);
+  renderResume();
 })();
