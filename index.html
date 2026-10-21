@@ -6,7 +6,7 @@
   <title>Kingdoms</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Alegreya+Sans:wght@400;500;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20">
+  <link rel="stylesheet" href="style.css?v=21">
 </head>
 <body>
 
@@ -63,6 +63,15 @@
       <rect x="10" y="18" width="5" height="3" rx=".6" fill="#bdb4a5" stroke="#3a332a" stroke-width=".8"/>
       <path d="M17.5 4 L21 8.5" stroke="#5a3d22" stroke-width="1.6" stroke-linecap="round"/>
       <path d="M16 6.2 L19.5 2.6 L20.5 3.6 Z" fill="#d6dbe0" stroke="#555" stroke-width=".7"/>
+    </symbol>
+    <symbol id="b-harbor" viewBox="0 0 24 24">
+      <path d="M1 19 Q6 17 12 19 T23 19 V23 H1 Z" fill="#3d7fa6"/>
+      <rect x="2" y="13" width="11" height="2.2" fill="#8b5a2b" stroke="#4a2e14" stroke-width=".7"/>
+      <path d="M4 15 V20 M10 15 V20" stroke="#4a2e14" stroke-width="1.4"/>
+      <path d="M13 17.5 H22.5 L20.5 20.5 H15 Z" fill="#7a4a24" stroke="#3a220f" stroke-width=".8"/>
+      <path d="M17.6 17.5 V5" stroke="#3a220f" stroke-width="1"/>
+      <path d="M17.9 5.6 L22.6 15.6 H17.9 Z" fill="#f2ead6" stroke="#8a7a5a" stroke-width=".6"/>
+      <path d="M17.3 7 L14 15.6 H17.3 Z" fill="#e2d6b8" stroke="#8a7a5a" stroke-width=".6"/>
     </symbol>
     <symbol id="b-granary" viewBox="0 0 24 24">
       <path d="M5 21 V11 a7 5 0 0 1 14 0 V21 Z" fill="#c99a52" stroke="#5a3d17" stroke-width="1"/>
@@ -228,6 +237,12 @@
       <path d="M2 14 Q6 4 12 10 Q16 2 22 6 Q18 9 19 12 Q22 13 20 16 Q15 15 13 18 L10 22 L9 17 Q4 18 2 14 Z" fill="currentColor"/>
       <circle cx="19.5" cy="8" r="1" fill="#000"/>
     </symbol>
+    <symbol id="u-sw" viewBox="0 0 24 24">
+      <path d="M3 21 Q5 10 11 8 Q17 6 18 12 Q18.6 16 15 18" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round"/>
+      <circle cx="14" cy="9" r="4.2" fill="currentColor"/>
+      <path d="M12 7.6 L13.4 9 L12 10.4 M16 7.6 L14.6 9 L16 10.4" stroke="#000" stroke-width=".9" fill="none"/>
+      <path d="M1 22 Q12 18 23 22" stroke="currentColor" stroke-width="1.6" fill="none" opacity=".6"/>
+    </symbol>
     <!-- Monster: Figuren auf der Karte -->
     <symbol id="fig-wo" viewBox="0 0 30 30">
       <ellipse cx="15" cy="28.4" rx="11" ry="1.6" fill="rgba(0,0,0,.35)"/>
@@ -248,6 +263,15 @@
       <path d="M11 9.6 h4" stroke="#2b3220" stroke-width=".7"/>
       <path d="M20.5 13 L24.6 3.6" stroke="#6b4a22" stroke-width="2.4" stroke-linecap="round"/>
       <ellipse cx="24.6" cy="3.4" rx="2.2" ry="2.8" fill="#7a5530"/>
+    </symbol>
+    <symbol id="fig-sw" viewBox="0 0 30 30">
+      <ellipse cx="15" cy="27.6" rx="13" ry="2.4" fill="#d8b46a" stroke="#9c7a3a" stroke-width=".6"/>
+      <path d="M8 27 Q6 16 12 11 Q18 7 21 12 Q23 16 20 21" fill="none" stroke="#8a6a44" stroke-width="5.6" stroke-linecap="round"/>
+      <path d="M8 27 Q6 16 12 11 Q18 7 21 12 Q23 16 20 21" fill="none" stroke="#b08a58" stroke-width="3.6" stroke-linecap="round"/>
+      <path d="M9 22 h3 M9.4 17.5 h3 M12 13.4 l2 2 M17 11 l.4 2.6" stroke="#6e5232" stroke-width=".8"/>
+      <circle cx="20" cy="21.6" r="4" fill="#5a2a1a" stroke="#3a1a0e" stroke-width=".8"/>
+      <path d="M17.2 20 l1 .9 l-1 .9 M18.6 24 l.7 -1 l.7 1 M22.6 20.4 l-1 .7 l1 .8 M20.4 18.4 l.2 1.2" stroke="#f3ead2" stroke-width=".7" fill="none"/>
+      <path d="M4 26 q1 -1.6 2 0 M24 26.4 q1 -1.4 2 0" stroke="#9c7a3a" stroke-width=".7" fill="none"/>
     </symbol>
     <symbol id="fig-dr" viewBox="0 0 40 30">
       <ellipse cx="20" cy="28.4" rx="15" ry="1.8" fill="rgba(0,0,0,.35)"/>
@@ -357,6 +381,7 @@
       <div class="row avatar-actions">
         <button id="avatarUpload">📷 Profilbild wählen</button>
         <button id="avatarRemove" class="ghost-btn">Bild entfernen</button>
+        <button id="btnMyStats" class="ghost-btn">📊 Meine Statistik</button>
       </div>
       <div id="resumeBox" class="resume" hidden></div>
       <button class="menu-btn featured" data-go="tutorial">
@@ -475,7 +500,9 @@
       <g id="routes"></g>
       <g id="provs"></g>
       <g id="nations"></g>
+      <g id="realms"></g>
       <g id="labels"></g>
+      <g id="orders"></g>
       <g id="units"></g>
       <g id="drag"></g>
       <g id="fx"></g>
@@ -546,21 +573,25 @@
   <button id="btnReload" class="primary">Neu laden</button>
   <button id="btnUpdLater" class="ghost" title="Später">✕</button>
 </div>
+<div id="stats" class="overlay" hidden></div>
 <div id="gameMenu" class="overlay" hidden>
   <div class="modal sheet">
     <div class="mhead"><h2>Menü</h2><button data-gm="close" class="ghost" title="Schließen">✕</button></div>
     <button class="menu-btn" data-gm="help"><span class="mb-ico">📖</span><span><b>Spielanleitung</b></span></button>
     <button class="menu-btn" data-gm="music"><span class="mb-ico">🎵</span><span><b id="gmMusic">Musik</b></span></button>
     <button class="menu-btn" data-gm="sfx"><span class="mb-ico">🔊</span><span><b id="gmSfx">Soundeffekte</b></span></button>
+    <button class="menu-btn" data-gm="stats"><span class="mb-ico">📊</span><span><b>Statistik</b><small>Wer liegt vorn? Verlauf und Schlachten</small></span></button>
+    <button class="menu-btn" data-gm="realms"><span class="mb-ico">🏷️</span><span><b id="gmRealms">Reichsnamen auf der Karte</b></span></button>
+    <button class="menu-btn" data-gm="keys"><span class="mb-ico">⌨️</span><span><b>Tastenkürzel</b></span></button>
     <button class="menu-btn" data-gm="fit"><span class="mb-ico">🗺️</span><span><b>Ganze Karte zeigen</b></span></button>
     <button class="menu-btn" data-gm="quit"><span class="mb-ico">🚪</span><span><b>Zum Hauptmenü</b></span></button>
   </div>
 </div>
 
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="audio.js?v=20"></script>
-<script src="game.js?v=20"></script>
-<script src="mapview.js?v=20"></script>
-<script src="app.js?v=20"></script>
+<script src="audio.js?v=21"></script>
+<script src="game.js?v=21"></script>
+<script src="mapview.js?v=21"></script>
+<script src="app.js?v=21"></script>
 </body>
 </html>

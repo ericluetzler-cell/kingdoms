@@ -11,11 +11,12 @@
   const HEX_S = 10;
 
   // Reihenfolge = wer bei Verlusten zuerst fällt (billigste zuerst)
-  const TYPES = ['w', 'a', 'p', 'l', 'k', 'c', 'h', 't', 'wo', 'tr', 'dr'];
+  const TYPES = ['w', 'a', 'p', 'l', 'k', 'c', 'h', 't', 'wo', 'tr', 'dr', 'sw'];
   const UNITS = {
     wo: { name: 'Wolf', plural: 'Wölfe', cost: 1, atk: 2, def: 2, mp: 1, tech: null, monster: true },
     tr: { name: 'Troll', plural: 'Trolle', cost: 1, atk: 4, def: 5, mp: 1, tech: null, monster: true },
     dr: { name: 'Drache', plural: 'Drachen', cost: 1, atk: 10, def: 16, mp: 1, tech: null, monster: true },
+    sw: { name: 'Sandwurm', plural: 'Sandwürmer', cost: 1, atk: 7, def: 7, mp: 1, tech: null, monster: true },
     w: { name: 'Krieger', plural: 'Krieger', cost: 2, need: { food: 2 }, atk: 1, def: 1, mp: 1, tech: null },
     a: { name: 'Bogenschütze', plural: 'Bogenschützen', cost: 3, need: { food: 1, wood: 2 }, atk: 1, def: 3, mp: 1, tech: 'archery' },
     p: { name: 'Speerkämpfer', plural: 'Speerkämpfer', cost: 4, need: { food: 2, wood: 1 }, atk: 2, def: 2, mp: 1, tech: 'bronze', note: '+2 Verteidigung gegen Ritter' },
@@ -30,17 +31,18 @@
     forest: { name: 'Wald', def: 0.25, gold: 1, res: 'wood' },
     mountain: { name: 'Gebirge', def: 0.5, gold: 1, res: 'stone' },
     desert: { name: 'Wüste', def: 0, gold: 0 },
+    snow: { name: 'Schnee', def: 0.35, gold: 0, res: 'stone' },
   };
   const PSIZE = {
     S: { name: 'Klein', def: 0, gold: 0 },
     M: { name: 'Mittel', def: 0.25, gold: 1 },
     L: { name: 'Groß', def: 0.5, gold: 2 },
   };
-  const ANY = ['plain', 'forest', 'mountain', 'desert'];
+  const ANY = ['plain', 'forest', 'mountain', 'desert', 'snow'];
   const BUILDINGS = {
     lumber: { name: 'Sägewerk', cost: 3, need: {}, on: ['forest'], tech: null, wood: 3, sci: 1, desc: '+3 Holz, +1 Wissen' },
     farm: { name: 'Bauernhof', cost: 3, need: { wood: 1 }, on: ['plain'], tech: null, food: 3, gold: 1, desc: '+3 Nahrung, +1 Gold' },
-    quarry: { name: 'Steinbruch', cost: 3, need: { wood: 1 }, on: ['mountain'], tech: null, stone: 3, desc: '+3 Stein' },
+    quarry: { name: 'Steinbruch', cost: 3, need: { wood: 1 }, on: ['mountain', 'snow'], tech: null, stone: 3, desc: '+3 Stein' },
     mine: { name: 'Mine', cost: 5, need: { wood: 2 }, on: ['mountain'], tech: 'mining', gold: 3, desc: '+3 Gold' },
     library: { name: 'Bibliothek', cost: 5, need: { wood: 1, stone: 1 }, on: ANY, tech: 'writing', sci: 2, desc: '+2 Wissen' },
     caravan: { name: 'Karawanserei', cost: 5, need: { wood: 2 }, on: ['desert'], tech: 'trade', gold: 3, desc: '+3 Gold' },
@@ -49,6 +51,7 @@
     barracks: { name: 'Kaserne', cost: 5, need: { wood: 3 }, on: ['plain', 'forest', 'desert'], tech: 'drill', desc: 'hier Einheiten ausbilden' },
     market: { name: 'Markt', cost: 6, need: { wood: 2, stone: 1 }, on: ['plain', 'forest', 'desert'], tech: 'commerce', gold: 2, desc: '+2 Gold' },
     temple: { name: 'Tempel', cost: 6, need: { stone: 3 }, on: ANY, tech: 'theology', gold: 1, sci: 1, desc: '+1 Gold, +1 Wissen' },
+    harbor: { name: 'Hafen', cost: 5, need: { wood: 4 }, on: ANY, coast: true, tech: 'navigation', gold: 1, food: 1, desc: '+1 Gold, +1 Nahrung – Schiffe bringen Truppen zu fernen Küsten' },
     granary: { name: 'Kornspeicher', cost: 5, need: { wood: 2 }, on: ['plain', 'forest', 'desert'], tech: 'agri', food: 2, gold: 1, desc: '+2 Nahrung, +1 Gold' },
   };
   // Rohstoffe: Nahrung (Ebenen, Bauernhöfe), Holz (Wälder, Sägewerke), Stein (Gebirge, Steinbrüche)
@@ -76,6 +79,7 @@
     banking: { name: 'Bankwesen', tier: 3, cost: 14, req: 'trade', desc: 'Jedes Gebäude +1 Gold' },
     chivalry: { name: 'Rittertum', tier: 3, cost: 16, req: 'riding', desc: 'Schwere Reiterei ausbilden (Angriff 6, 2 Provinzen weit)' },
     engineering: { name: 'Ingenieurwesen', tier: 3, cost: 16, req: 'math', desc: 'Triboke ausbilden (Angriff 9, ignorieren Festungen)' },
+    navigation: { name: 'Seefahrt', tier: 2, cost: 8, req: 'writing', desc: 'Hafen an der Küste bauen: von dort segeln Truppen zu Küsten in Reichweite – auch zum Angriff' },
     fortification: { name: 'Befestigung', tier: 2, cost: 8, req: 'masonry', desc: 'Stadtmauern um Hauptstadt und Festungen: +50 % Verteidigung – Belagerungswaffen brechen sie nur zur Hälfte' },
   };
   const MAPS = {
@@ -84,7 +88,8 @@
     twin: { name: 'Zwei Reiche', icon: '🌗', desc: 'Zwei Kontinente, getrennt durch eine Meerenge.' },
     inland: { name: 'Binnenmeer', icon: '🌊', desc: 'Ein Ring aus Ländern um ein großes Meer.' },
     highlands: { name: 'Hochland', icon: '⛰️', desc: 'Gewaltige Gebirge mit unpassierbaren Gipfeln und engen Pässen.' },
-    desert: { name: 'Wüstenreich', icon: '🏜️', desc: 'Karge Wüste – fruchtbare Flusstäler sind heiß umkämpft.' },
+    desert: { name: 'Wüstenreich', icon: '🏜️', desc: 'Karge Wüste – fruchtbare Flusstäler sind heiß umkämpft. Achtung, Sandwürmer!' },
+    frost: { name: 'Nordland', icon: '❄️', desc: 'Eisige Schneefelder im Norden, ein grüner Süden – im Schnee verteidigt man sich leichter.' },
   };
   const MAP_KEYS = Object.keys(MAPS);
   const SIZES = { small: { name: 'Klein', dim: [34, 24] }, medium: { name: 'Mittel', dim: [44, 30] }, large: { name: 'Groß', dim: [56, 38] }, huge: { name: 'Riesig', dim: [68, 46] }, epic: { name: 'Gigantisch', dim: [84, 56] } };
@@ -98,12 +103,13 @@
   const pick = a => a[rnd(a.length)];
   const akey = (a, b) => Math.min(a, b) + '-' + Math.max(a, b);
 
-  const emptyU = () => ({ w: 0, a: 0, p: 0, l: 0, k: 0, c: 0, h: 0, t: 0, wo: 0, tr: 0, dr: 0 });
+  const emptyU = () => ({ w: 0, a: 0, p: 0, l: 0, k: 0, c: 0, h: 0, t: 0, wo: 0, tr: 0, dr: 0, sw: 0 });
   // Monsterhorte: wer sie besiegt, bekommt den Schatz
   const LAIRS = {
     wolves: { name: 'Wolfsrudel', icon: '🐺', units: { wo: 4 }, gold: 8, sci: 2, food: 4 },
     trolls: { name: 'Trollhöhle', icon: '👹', units: { tr: 3 }, gold: 16, sci: 5, stone: 6 },
     dragon: { name: 'Drachenhort', icon: '🐉', units: { dr: 1, wo: 2 }, gold: 35, sci: 12, wood: 8, stone: 8 },
+    worms: { name: 'Sandwurmnest', icon: '🪱', units: { sw: 2 }, gold: 22, sci: 6, food: 6, stone: 4 },
   };
   const total = u => TYPES.reduce((s, t) => s + (u[t] || 0), 0);
   const addU = (a, b) => { const r = emptyU(); for (const t of TYPES) r[t] = (a[t] || 0) + (b[t] || 0); return r; };
@@ -193,6 +199,7 @@
     forest: ['wald', 'hain', 'grund', 'holz', 'forst', 'busch', 'moor'],
     mountain: ['berg', 'fels', 'stein', 'horn', 'wacht', 'kamm', 'klamm'],
     desert: ['sand', 'öde', 'dünen', 'steppe', 'glut', 'senke'],
+    snow: ['eis', 'firn', 'gletscher', 'schnee', 'reif', 'frost'],
   };
 
   function quantile(arr, q) {
@@ -213,7 +220,7 @@
     // 1. Landform je nach Kartentyp
     const ell = (x, y, cx, cy, rx, ry) => ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2;
     const e = new Float32Array(N);
-    const LAND = cus.land != null ? cus.land : { continent: 0.55, islands: 0.36, twin: 0.48, inland: 0.48, highlands: 0.6, desert: 0.58 }[type];
+    const LAND = cus.land != null ? cus.land : { continent: 0.55, islands: 0.36, twin: 0.48, inland: 0.48, highlands: 0.6, desert: 0.58, frost: 0.56 }[type];
     for (let i = 0; i < N; i++) {
       const [x, y] = hexXY(geo, i);
       const nx = x / geo.W, ny = y / geo.H;
@@ -257,6 +264,14 @@
     const mDry = quantile(ml, dShare), mWet = quantile(ml, Math.max(dShare, 1 - fShare));
     for (const i of landIdx) {
       terr[i] = elev[i] >= hPeak ? 'x' : elev[i] >= hMtn ? 'm' : moist[i] <= mDry ? 'd' : moist[i] >= mWet ? 'f' : 'p';
+    }
+    // Schnee: der kalte Norden (oben auf der Karte), mit welligem Rand
+    const SNOW = cus.snow != null ? cus.snow : { continent: 0.2, twin: 0.16, inland: 0.13, highlands: 0.26, islands: 0.12, desert: 0, frost: 0.6 }[type] || 0;
+    if (SNOW > 0) for (const i of landIdx) {
+      if (terr[i] === 'x' || terr[i] === 'm') continue;
+      const [x, y] = hexXY(geo, i);
+      const cold = y / geo.H + (noise(x / geo.W * 4 + 90, y / geo.H * 4 + 90, 3) - 0.5) * 0.24;
+      if (cold < SNOW) terr[i] = 's';
     }
 
     // 3. kleine Inselchen versenken
@@ -394,7 +409,7 @@
 
     // 6. Provinzdaten
     const PN = ids.length;
-    const provinces = Array.from({ length: PN }, () => ({ hexes: [], tcount: { p: 0, f: 0, m: 0, d: 0 }, river: false, n: new Set() }));
+    const provinces = Array.from({ length: PN }, () => ({ hexes: [], tcount: { p: 0, f: 0, m: 0, d: 0, s: 0 }, river: false, n: new Set() }));
     for (const i of pass) {
       const P0 = provinces[prov[i]];
       P0.hexes.push(i); P0.tcount[terr[i]]++;
@@ -409,7 +424,7 @@
     const usedNames = new Set();
     const cells = provinces.map((P0, k) => {
       const tc = P0.tcount;
-      const terrain = { p: 'plain', f: 'forest', m: 'mountain', d: 'desert' }[['p', 'f', 'm', 'd'].reduce((a, b) => (tc[b] > tc[a] ? b : a))];
+      const terrain = { p: 'plain', f: 'forest', m: 'mountain', d: 'desert', s: 'snow' }[['p', 'f', 'm', 'd', 's'].reduce((a, b) => (tc[b] > tc[a] ? b : a))];
       // Beschriftungspunkt: das Feld, das am weitesten von der Provinzgrenze entfernt ist
       const inP = new Set(P0.hexes), dist = new Map(), q = [];
       for (const i of P0.hexes) {
@@ -493,6 +508,26 @@
         if (r && r[4] <= 3 && rng() < 0.6) addRoute(...r.slice(0, 4));
       }
     }
+
+    // Seefahrt: welche Küstenprovinzen erreicht ein Schiff von hier aus (höchstens SEA_R Meeresfelder)?
+    const SEA_R = 10, seaNb = new Map();
+    for (const i of pass) for (let d = 0; d < 6; d++) {
+      const j = hexNeighbor(geo, i, d);
+      if (j >= 0 && terr[j] === '.') { if (!seaNb.has(j)) seaNb.set(j, new Set()); seaNb.get(j).add(prov[i]); }
+    }
+    cells.forEach((c, k) => {
+      c.coast = coast[k].length > 0;
+      if (!c.coast) return;
+      const dist = new Map(), q = [], reach = new Set();
+      for (const [h, ps] of seaNb) if (ps.has(k)) { dist.set(h, 0); q.push(h); }
+      for (let a = 0; a < q.length; a++) {
+        const h = q[a], dd = dist.get(h);
+        for (const pp of seaNb.get(h) || []) if (pp !== k) reach.add(pp);
+        if (dd >= SEA_R) continue;
+        for (let d = 0; d < 6; d++) { const j = hexNeighbor(geo, h, d); if (j >= 0 && terr[j] === '.' && !dist.has(j)) { dist.set(j, dd + 1); q.push(j); } }
+      }
+      c.sea = [...reach];
+    });
 
     geo.terr = terr.join('');
     geo.prov = Array.from(prov);
@@ -615,7 +650,9 @@
       name: p.name, type: p.type, level: p.level || null, cid: p.cid || null,
       color: COLORS.includes(p.color) ? p.color : COLORS[i], alive: true, gold: opts.gold != null ? +opts.gold : 4, sci: 2, food: 4, wood: 3, stone: 2, techs: [], lastAsk: -10, divNo: 0,
     }));
+    for (const pl of players) pl.rec = newRec();
     const st = {
+      id: Math.random().toString(36).slice(2, 10), hist: [],
       cells, geo, players, turn: 0, round: 1, attacks: 0, divSeq: 0,
       pacts: {}, proposals: [], log: [], over: false, winner: -1, battle: null, march: null, seq: 0,
       maxRounds: opts.rounds ? +opts.rounds : mode === 'blitz' ? 20 : MAX_ROUNDS, map: geo.type, truce: opts.truce || 0,
@@ -660,7 +697,7 @@
       const n = Math.round(cells.length * (cus.monsters != null ? cus.monsters : 0.11));
       lairSpots = free.slice(0, n).map(i => {
         const c = cells[i], r = Math.random();
-        const t = (c.sz === 'L' || c.terrain === 'mountain') && r < 0.3 ? 'dragon' : r < 0.55 ? 'wolves' : 'trolls';
+        const t = c.terrain === 'desert' && r < 0.7 ? 'worms' : (c.sz === 'L' || c.terrain === 'mountain') && r < 0.3 ? 'dragon' : r < 0.55 ? 'wolves' : 'trolls';
         return [i, t];
       });
     }
@@ -680,10 +717,20 @@
       setUnits(st, cells[best], { w: 4, a: 2 });
     }
     geo.terr = terr.join('');
+    snapshot(st);
     log(st, `Das Spiel beginnt${st.worldName ? ` in der Welt „${st.worldName}“` : ` auf der Karte „${MAPS[geo.type].name}“`} – Modus: ${MODES[mode].name}!`);
     if (mode === 'throne') log(st, `👑 Erobere die Thronstadt ${cells[st.throne].name}! Wer sie zu Beginn seines Zuges hält, bekommt eine Krone – ${st.crownGoal} Kronen gewinnen.`);
     startTurn(st);
     return st;
+  }
+
+  // Statistik je Herrscher
+  const newRec = () => ({ won: 0, lost: 0, defended: 0, fallen: 0, conq: 0, killed: 0, casualties: 0, recruited: 0, built: 0, monsters: 0 });
+  const rec = pl => pl.rec || (pl.rec = newRec());
+  function snapshot(st) {
+    st.hist = st.hist || [];
+    if (st.hist.length && st.hist[st.hist.length - 1].r === st.round) st.hist.pop();
+    st.hist.push({ r: st.round, d: st.players.map((pl, i) => { const x = stats(st, i); return [x.cells, x.troops, score(st, i), x.income, x.sciIncome]; }) });
   }
 
   function log(st, m, ...ps) {
@@ -780,6 +827,25 @@
     if (pl.food < 0) { pl.gold = Math.max(0, pl.gold + pl.food); pl.food = 0; }
     for (const c of st.cells) { for (const v of c.divs) v.done = false; c.shot = false; sync(c); }
     st.attacks = 0;
+    // Marschbefehle ausführen
+    const orders = [];
+    st.cells.forEach((c, i) => { if (c.owner === st.turn) for (const v of c.divs) if (v.goal != null) orders.push([i, v]); });
+    for (const [i, v] of orders) if (st.cells[i].divs.includes(v)) stepOrder(st, i, v);
+    // Sandwürmer: Wüstenprovinzen neben einem Sandwurmnest sind gefährlich
+    st.cells.forEach((c, i) => {
+      if (c.owner !== st.turn || c.terrain !== 'desert' || !total(c.u) || !c.n.some(j => st.cells[j].lair === 'worms')) return;
+      if (Math.random() >= 0.14) return;
+      const n = Math.min(total(c.u) - (total(c.u) > 1 ? 1 : 0), 1 + rnd(2));
+      if (n <= 0) return;
+      for (let k = 0; k < n; k++) {
+        const t = TYPES.find(x => c.u[x] > 0);
+        const v = c.divs.filter(d => d.u[t] > 0)[0];
+        v.u[t]--; sync(c);
+      }
+      rec(pl).casualties += n;
+      st.worm = { id: ++st.seq, cell: i, p: st.turn };
+      log(st, `🪱 Ein Sandwurm bricht in ${c.name} aus dem Sand und verschlingt ${n} ${n === 1 ? 'Einheit' : 'Einheiten'} von {0}!`, st.turn);
+    });
     if (st.mode === 'throne' && st.throne >= 0 && st.cells[st.throne].owner === st.turn && !st.over) {
       st.crowns[st.turn]++;
       log(st, `👑 {0} hält den Thron – Krone ${st.crowns[st.turn]} von ${st.crownGoal}!`, st.turn);
@@ -798,7 +864,9 @@
       t = (t + 1) % n;
       if (t === 0) st.round++;
     } while (!st.players[t].alive);
+    const newRound = t <= st.turn;
     st.turn = t;
+    if (newRound) snapshot(st);
     if (st.round > st.maxRounds) {
       let best = -1, bestScore = -1;
       st.players.forEach((p, i) => {
@@ -835,7 +903,14 @@
     return mp === Infinity ? 0 : mp + (hasTech(st, p, 'roads') ? 1 : 0);
   }
 
-  // Eigene Provinzen, die eine Gruppe in diesem Zug erreichen kann (nur durch eigenes Gebiet)
+  // Seefahrt: aus einem eigenen Hafen (mit Forschung „Seefahrt“) erreichbare Küstenprovinzen
+  const canSail = (st, i) => { const c = st.cells[i]; return !!c && c.building === 'harbor' && c.owner >= 0 && hasTech(st, c.owner, 'navigation') && Array.isArray(c.sea); };
+  const seaTargets = (st, i) => (canSail(st, i) ? st.cells[i].sea : []);
+  // Kann man von „from“ aus „to“ angreifen? (Nachbar oder per Schiff)
+  const canStrike = (st, from, to) => st.cells[from].n.includes(to) || seaTargets(st, from).includes(to);
+
+  // Eigene Provinzen, die eine Gruppe in diesem Zug erreichen kann: durch eigenes Land, durch das Land von
+  // Verbündeten (nur durchziehen, nicht dort bleiben) und per Schiff aus einem Hafen
   function moveTargets(st, from, units) {
     const C = st.cells, p = C[from].owner, range = mpOf(st, p, units);
     const d = new Map([[from, 0]]), queue = [from], out = [];
@@ -843,11 +918,42 @@
       const i = queue[h];
       if (d.get(i) >= range) continue;
       for (const j of C[i].n) {
-        if (d.has(j) || C[j].owner !== p) continue;
-        d.set(j, d.get(i) + 1); queue.push(j); out.push(j);
+        if (d.has(j)) continue;
+        if (C[j].owner === p) { d.set(j, d.get(i) + 1); queue.push(j); out.push(j); }
+        else if (C[j].owner >= 0 && isAlly(st, p, C[j].owner)) { d.set(j, d.get(i) + 1); queue.push(j); }
       }
     }
+    for (const j of seaTargets(st, from)) if (C[j].owner === p && j !== from && !out.includes(j)) out.push(j);
     return out;
+  }
+
+  // kürzester Landweg durch eigenes und verbündetes Gebiet (für Marschbefehle) – Liste der Provinzen ohne Start
+  function routeTo(st, p, from, to) {
+    const C = st.cells, prev = new Map([[from, -1]]), q = [from];
+    const ok = j => C[j].owner === p || (C[j].owner >= 0 && isAlly(st, p, C[j].owner));
+    for (let h = 0; h < q.length && !prev.has(to); h++) for (const j of C[q[h]].n) if (!prev.has(j) && ok(j)) { prev.set(j, q[h]); q.push(j); }
+    if (!prev.has(to)) return null;
+    const path = [];
+    for (let i = to; i !== from; i = prev.get(i)) path.unshift(i);
+    return path;
+  }
+
+  // Marschbefehl: eine Division zieht Runde für Runde automatisch Richtung Ziel
+  function stepOrder(st, i, v) {
+    const C = st.cells, c = C[i], p = c.owner, g = v.goal;
+    if (g == null || v.done) return;
+    if (!C[g] || C[g].owner !== p) { v.goal = null; log(st, `🚩 {0}: Das Marschziel von ${v.name} gehört nicht mehr dir – Befehl aufgehoben.`, p); return; }
+    const path = routeTo(st, p, i, g);
+    if (!path) { v.goal = null; log(st, `🚩 {0}: ${v.name} findet keinen Weg nach ${C[g].name} – Befehl aufgehoben.`, p); return; }
+    const mp = mpOf(st, p, v.u);
+    let dest = -1;
+    for (let k = 0; k < Math.min(mp, path.length); k++) { const j = path[k]; if (C[j].owner === p && roomIn(C[j]) >= total(v.u)) dest = j; }
+    if (dest < 0) return; // Weg verstopft – nächste Runde wieder
+    c.divs = c.divs.filter(x => x !== v);
+    sync(c);
+    arrive(C[dest], [v]);
+    if (dest === g) v.goal = null;
+    st.march = { id: ++st.seq, from: i, to: dest, n: total(v.u), fig: strongestType(v.u) };
   }
 
   // Angriffskraft (aus einer oder mehreren Provinzen) gegen Verteidigungskraft → Siegchance
@@ -916,6 +1022,7 @@
   function canBuild(st, p, i, b) {
     const c = st.cells[i], B = BUILDINGS[b];
     if (!c || !B || c.owner !== p || c.building || c.capital) return false;
+    if (B.coast && !c.coast) return false;
     return B.on.includes(c.terrain) && (!B.tech || hasTech(st, p, B.tech));
   }
 
@@ -1031,6 +1138,7 @@
         v.u = addU(v.u, units);
         sync(c);
         pay(me, cost, need);
+        rec(me).recruited += total(units);
         return { ok: true, div: v.id };
       }
       case 'build': {
@@ -1041,9 +1149,11 @@
         if (c.building) return fail(`Hier steht schon: ${BUILDINGS[c.building].name}.`);
         if (B.tech && !hasTech(st, p, B.tech)) return fail(`${B.name} braucht „${TECHS[B.tech].name}“.`);
         if (!B.on.includes(c.terrain)) return fail(`${B.name} geht nur auf: ${B.on.map(t => TERRAIN[t].name).join(', ')}.`);
+        if (B.coast && !c.coast) return fail(`${B.name} geht nur in Provinzen an der Küste.`);
         const miss = lack(me, B.cost, B.need || {});
         if (miss) return fail(miss);
         pay(me, B.cost, B.need || {}); c.building = a.b;
+        rec(me).built++;
         if (a.b === 'fort') log(st, `🏰 {0} baut eine Festung in ${c.name}.`, p);
         return { ok: true };
       }
@@ -1099,6 +1209,8 @@
           sync(t);
         }
         st.volley = { id: ++st.seq, from: a.from, to: a.to, n: archers, killed };
+        rec(me).killed += killed;
+        if (t.owner >= 0) rec(st.players[t.owner]).casualties += killed;
         log(st, `🏹 {0} beschießt ${t.name}: ${killed} ${killed === 1 ? 'Einheit' : 'Einheiten'} getroffen.`, p);
         return { ok: true, killed };
       }
@@ -1127,6 +1239,20 @@
         sync(c);
         return { ok: true, div: base.id };
       }
+      case 'order': {
+        const c = C[a.cell];
+        if (!c || c.owner !== p) return fail('Nur in eigenen Provinzen.');
+        const ds = (a.divs || []).map(id => c.divs.find(v => v.id === id)).filter(Boolean);
+        if (!ds.length) return fail('Keine Division ausgewählt.');
+        if (a.to == null) { for (const v of ds) v.goal = null; return { ok: true }; }
+        const t = C[a.to];
+        if (!t || t.owner !== p) return fail('Marschziele müssen eigene Provinzen sein.');
+        if (a.to === a.cell) return fail('Die Division steht schon dort.');
+        if (!routeTo(st, p, a.cell, a.to)) return fail('Dorthin gibt es keinen Landweg durch eigenes oder verbündetes Gebiet.');
+        for (const v of ds) v.goal = a.to;
+        for (const v of ds) stepOrder(st, a.cell, v);
+        return { ok: true };
+      }
       case 'move': {
         const f = C[a.from], t = C[a.to];
         if (!f || !t || f.owner !== p || t.owner !== p) return fail('Nur zwischen eigenen Provinzen.');
@@ -1139,7 +1265,9 @@
           const mp = mpOf(st, p, units);
           return fail(`Zu weit – diese Truppen schaffen ${mp} Provinz${mp === 1 ? '' : 'en'} pro Zug (nur durch eigenes Land).`);
         }
-        arrive(t, detach(st, f, spec));
+        const moved = detach(st, f, spec);
+        for (const v of moved) v.goal = null;
+        arrive(t, moved);
         st.march = { id: ++st.seq, from: a.from, to: a.to, n: total(units), fig: strongestType(units) };
         return { ok: true };
       }
@@ -1154,7 +1282,7 @@
         let force = emptyU();
         for (const s of srcs) {
           const f = C[s.cell];
-          if (!f || f.owner !== p || !f.n.includes(a.to)) return fail('Angreifen geht nur aus eigenen Nachbarprovinzen.');
+          if (!f || f.owner !== p || !canStrike(st, s.cell, a.to)) return fail('Angreifen geht nur aus eigenen Nachbarprovinzen – oder per Schiff aus einem Hafen.');
           const u = specUnits(f, s.spec);
           if (typeof u === 'string') return fail(u);
           force = addU(force, u);
@@ -1172,11 +1300,13 @@
         const main = live.slice().sort((x, y) => total(specUnits(C[y.cell], y.spec)) - total(specUnits(C[x.cell], x.spec)))[0].cell;
         const froms = live.map(s => s.cell);
         const attDivs = live.flatMap(s => detach(st, C[s.cell], s.spec));
+        for (const v of attDivs) v.goal = null;
         st.attacks++;
         let aL, dL;
         if (won) {
           dL = total(t.u);
           aL = lossesFrom(attDivs, o.D * 0.5 * spread(), tt => atkOf(st, p, tt));
+          var wasLair = !!t.lair;
           t.owner = p; t.divs = [];
           arrive(t, attDivs);
           let reward = '';
@@ -1198,12 +1328,17 @@
           if (t.capital) { t.capital = false; t.building = 'fort'; log(st, `👑 {0} erobert die Hauptstadt ${t.name} von {1}!`, p, prev); }
           else if (prev >= 0) log(st, `⚔️ {0} erobert ${t.name} von {1}.` + reward, p, prev);
           else if (!reward.includes('Schatz')) log(st, `🚩 {0} erobert ${t.name}.` + reward, p);
+          Object.assign(rec(me), { won: rec(me).won + 1, conq: rec(me).conq + 1, killed: rec(me).killed + dL, casualties: rec(me).casualties + aL });
+          if (prev < 0 && wasLair) rec(me).monsters++;
+          if (prev >= 0) { const r = rec(st.players[prev]); r.fallen++; r.casualties += dL; r.killed += aL; }
           checkEliminated(st, prev);
           st.battle = { id: ++st.seq, from: main, froms, to: a.to, won, aL, dL, p: o.p, reward, prev, fig: strongestType(force) };
         } else {
           aL = total(force);
           dL = lossesFrom(t.divs, o.A * 0.5 * spread(), tt => defOf(st, prev, tt, false));
           sync(t);
+          Object.assign(rec(me), { lost: rec(me).lost + 1, casualties: rec(me).casualties + aL, killed: rec(me).killed + dL });
+          if (prev >= 0) { const r = rec(st.players[prev]); r.defended++; r.casualties += dL; r.killed += aL; }
           if (prev >= 0) log(st, `🛡️ {1} verteidigt ${t.name} gegen {0}.`, p, prev);
           st.battle = { id: ++st.seq, from: main, froms, to: a.to, won, aL, dL, p: o.p, prev, fig: strongestType(force) };
         }
@@ -1445,7 +1580,7 @@
   }
 
   global.K = {
-    AI_CFG, PACTS, pactOf, isAlly, allyBonus, WALLS_COST, WALLS_NEED, RES, RKEYS, needOf, lack, maxAfford, divUnits, strongestType, capOf, roomIn, canRecruit, shootTargets, createGame, generateWorld, applyAction, aiAction, aiRespond, stats, income, provinceYield, score, allied, odds, total, avail,
+    AI_CFG, canSail, seaTargets, canStrike, routeTo, PACTS, pactOf, isAlly, allyBonus, WALLS_COST, WALLS_NEED, RES, RKEYS, needOf, lack, maxAfford, divUnits, strongestType, capOf, roomIn, canRecruit, shootTargets, createGame, generateWorld, applyAction, aiAction, aiRespond, stats, income, provinceYield, score, allied, odds, total, avail,
     moveTargets, mpOf, canBuild, canResearch, unitUnlocked, hasTech, isCity, defMult, hexNeighbor, hexXY, emptyU, addU, upkeepFor,
     COLORS, UNITS, TYPES, TERRAIN, PSIZE, BUILDINGS, TECHS, MAPS, SIZES, MODES, LAIRS,
   };

@@ -93,7 +93,7 @@
 
   // ---------- Gelände malen ----------
 
-  const COL = { p: [140, 178, 88], f: [74, 120, 56], m: [148, 138, 118], d: [224, 197, 132], x: [118, 112, 102] };
+  const COL = { p: [140, 178, 88], f: [74, 120, 56], m: [148, 138, 118], d: [224, 197, 132], x: [118, 112, 102], s: [226, 233, 240] };
   const mk = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
   function hexPath(g, x, y, r) {
     g.moveTo(x + r * 0.866, y - r * 0.5);
@@ -270,6 +270,9 @@
       } else if (t === 'd') {
         if (r(1) < 0.7) deco.push({ t: 'dune', x: x + (r(2) - 0.5) * s, y: y + (r(3) - 0.5) * s, z: r(4) });
         if (r(5) < 0.12) deco.push({ t: 'rock', x: x + (r(6) - 0.5) * s, y: y + (r(7) - 0.5) * s, z: r(8) });
+      } else if (t === 's') {
+        if (r(1) < 0.38) { const n = 1 + Math.floor(r(2) * 3); for (let k = 0; k < n; k++) deco.push({ t: 'pine', x: x + (r(10 + k) - 0.5) * s * 1.4, y: y + (r(20 + k) - 0.5) * s * 1.3, z: r(30 + k) }); }
+        else if (r(3) < 0.45) deco.push({ t: 'drift', x: x + (r(4) - 0.5) * s, y: y + (r(5) - 0.5) * s, z: r(6) });
       } else if (t === 'p') {
         if (r(1) < 0.5) deco.push({ t: 'grass', x: x + (r(2) - 0.5) * s * 1.2, y: y + (r(3) - 0.5) * s * 1.2, z: r(4) });
         if (r(5) < 0.08) deco.push({ t: 'field', x: x + (r(6) - 0.5) * s * 0.6, y: y + (r(7) - 0.5) * s * 0.6, z: r(8) });
@@ -305,6 +308,20 @@
         g.fillStyle = d.z > 0.5 ? '#e4d6b8' : '#d2c19c'; g.fillRect(d.x - w / 2, d.y - h / 2, w, h);
         g.fillStyle = d.z > 0.7 ? '#7a5a40' : '#a34a30';
         g.beginPath(); g.moveTo(d.x - w * 0.62, d.y - h / 2 + 0.2); g.lineTo(d.x, d.y - h * 1.15); g.lineTo(d.x + w * 0.62, d.y - h / 2 + 0.2); g.fill();
+      } else if (d.t === 'pine') {
+        const w = s * (0.22 + d.z * 0.08), h = w * 2.2;
+        g.fillStyle = 'rgba(40,60,80,.22)';
+        g.beginPath(); g.ellipse(d.x + w * 0.4, d.y + w * 0.2, w * 0.9, w * 0.4, 0, 0, 7); g.fill();
+        g.fillStyle = '#2f5a45';
+        g.beginPath(); g.moveTo(d.x - w, d.y); g.lineTo(d.x, d.y - h); g.lineTo(d.x + w, d.y); g.fill();
+        g.fillStyle = '#f4f7fb';
+        g.beginPath(); g.moveTo(d.x - w * 0.45, d.y - h * 0.55); g.lineTo(d.x, d.y - h); g.lineTo(d.x + w * 0.45, d.y - h * 0.55);
+        g.lineTo(d.x + w * 0.15, d.y - h * 0.62); g.lineTo(d.x - w * 0.2, d.y - h * 0.58); g.fill();
+      } else if (d.t === 'drift') {
+        g.fillStyle = 'rgba(150,175,200,.35)';
+        g.beginPath(); g.ellipse(d.x + s * 0.05, d.y + s * 0.05, s * 0.32, s * 0.1, 0, 0, 7); g.fill();
+        g.fillStyle = 'rgba(255,255,255,.85)';
+        g.beginPath(); g.ellipse(d.x, d.y, s * 0.3, s * 0.09, 0, 0, 7); g.fill();
       } else if (d.t === 'dune') {
         g.strokeStyle = 'rgba(170,130,60,.55)'; g.lineWidth = s * 0.07;
         g.beginPath(); g.moveTo(d.x - s * 0.4, d.y); g.quadraticCurveTo(d.x, d.y - s * 0.28, d.x + s * 0.4, d.y); g.stroke();

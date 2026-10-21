@@ -7,16 +7,16 @@
   const LEVELS = { easy: 'Leicht', medium: 'Mittel', hard: 'Schwer' };
   const BOT_NAMES = ['Graf Bruno', 'Lady Mira', 'König Otto', 'Baronin Ilse', 'Ritter Kunz', 'Herzogin Wanda', 'Fürst Egon', 'Gräfin Liv'];
   const ID_PREFIX = 'kingdoms-game-';
-  const BLDG_ORDER = ['farm', 'lumber', 'quarry', 'granary', 'mine', 'library', 'market', 'temple', 'caravan', 'tower', 'barracks', 'fort'];
-  const BUILD_CATS = { eco: ['farm', 'lumber', 'quarry', 'granary', 'mine', 'library', 'market', 'temple', 'caravan'], mil: ['tower', 'barracks', 'fort', 'walls'], tools: ['demolish'] };
+  const BLDG_ORDER = ['farm', 'lumber', 'quarry', 'granary', 'mine', 'harbor', 'library', 'market', 'temple', 'caravan', 'tower', 'barracks', 'fort'];
+  const BUILD_CATS = { eco: ['farm', 'lumber', 'quarry', 'granary', 'mine', 'harbor', 'library', 'market', 'temple', 'caravan'], mil: ['tower', 'barracks', 'fort', 'walls'], tools: ['demolish'] };
   function bInfo(b) {
     if (b === 'walls') return { name: 'Stadtmauern', cost: K.WALLS_COST, need: K.WALLS_NEED, tech: 'fortification', desc: '+50 % Verteidigung', icon: '#walls', where: 'Hauptstadt oder Festung' };
     if (b === 'demolish') return { name: 'Abreißen', cost: 0, need: {}, tech: 'demolition', desc: '50 % der Kosten zurück', emoji: '🔨', where: 'eigene Gebäude und Mauern' };
     const B = K.BUILDINGS[b];
-    return { ...B, icon: b === 'fort' ? '#castle' : '#b-' + b, where: B.on.length === 4 ? 'überall' : B.on.map(t => K.TERRAIN[t].name).join(', ') };
+    return { ...B, icon: b === 'fort' ? '#castle' : '#b-' + b, where: B.coast ? 'an der Küste' : B.on.length >= 5 ? 'überall' : B.on.map(t => K.TERRAIN[t].name).join(', ') };
   }
   const newSeed = () => (Math.random() * 2 ** 32) >>> 0;
-  const APP_VERSION = '20';
+  const APP_VERSION = '21';
   // nur zum Testen: mit ?debug in der Adresse ist der Spielzustand in der Konsole erreichbar
   const DEBUG = new URLSearchParams(location.search).has('debug');
 
@@ -35,6 +35,7 @@
     get(k) { try { return localStorage.getItem(k); } catch { return null; } },
     set(k, v) { try { localStorage.setItem(k, v); } catch { /* egal */ } },
   };
+  const newTok = () => Array.from(crypto.getRandomValues(new Uint8Array(12)), b => b.toString(16).padStart(2, '0')).join('');
   const PID = store.get('kingdoms-pid') || (() => { const v = Math.random().toString(36).slice(2, 12); store.set('kingdoms-pid', v); return v; })();
   const coin = n => `<span class="amt"><i class="coin"></i>${n}</span>`;
   const scroll = n => `<span class="amt"><i class="scroll">📜</i>${n}</span>`;
@@ -167,7 +168,7 @@
     save(list) { store.set('kingdoms-worlds', JSON.stringify(list)); },
   };
   const worldCustom = w => ({
-    land: w.land, provSize: w.provSize, forest: w.forest, mountain: w.mountain, desert: w.desert, rivers: w.rivers, peaks: w.peaks, fixedSize: true,
+    land: w.land, provSize: w.provSize, forest: w.forest, mountain: w.mountain, desert: w.desert, snow: w.snow != null ? w.snow : 0, rivers: w.rivers, peaks: w.peaks, fixedSize: true,
     monsters: w.monsters != null ? w.monsters : 0.11, starts: w.starts || [],
     lairs: w.lairsManual ? w.lairs || {} : undefined, huts: w.hutsManual ? w.huts || [] : undefined,
   });
@@ -284,7 +285,7 @@
   function resetSession() {
     clearTimeout(S.aiTimer);
     if (S.peer) { try { S.peer.destroy(); } catch { /* egal */ } }
-    Object.assign(S, { role: null, me: 0, state: null, geo: null, lobby: [], code: '', peer: null, conns: new Map(), conn: null,
+    Object.assign(S, { role: null, me: 0, state: null, geo: null, lobby: [], code: '', peer: null, conns: new Map(), conn: null, seats: null, joinReqs: [], reqSeq: 0, seatTok: null, pin: -1, infoCell: -1,
       avatars: null, sel: -1, selPref: null, target: -1, mode: 'recruit', unit: 'w', bldg: 'lumber', amount: 1, turnKey: '',
       seenBattle: 0, seenMarch: 0, chat: [], tut: null, lastLogN: null, mapKey: '', nationKey: '', overShown: false, pick: null, plan: null, selDivs: null, split: null });
     $('#planner').hidden = true;
@@ -294,14 +295,14 @@
     document.title = 'Kingdoms';
   }
 
-  function toMenu() { resetSession(); show('menu'); menuPanel('main'); renderResume(); }
+  function toMenu() { resetSession(); show('menu'); menuPanel('main'); renderResume(); setTimeout(() => checkVersion(), 500); }
 
   // ---------- Weltenschmiede: eigene Welten gestalten ----------
 
   const forge = (() => {
     const DEF = () => ({
       id: 'w' + Date.now().toString(36), name: 'Meine Welt', type: 'continent', size: 'medium', seed: newSeed(),
-      land: 0.55, provSize: 17, forest: 0.34, mountain: 0.14, desert: 0.14, rivers: 6, peaks: true, monsters: 0.11,
+      land: 0.55, provSize: 17, forest: 0.34, mountain: 0.14, desert: 0.14, snow: 0.15, rivers: 6, peaks: true, monsters: 0.11,
       names: {}, starts: [], lairs: {}, huts: [], lairsManual: false, hutsManual: false, rounds: 40, gold: 4, truce: 0,
     });
     let F = DEF(), world = null, pvTimer, renaming = -1, tool = 'rename';
@@ -312,6 +313,7 @@
       ['forest', 'Wald', 0, 0.7, 0.01, v => Math.round(v * 100) + ' %', false],
       ['mountain', 'Gebirge', 0, 0.5, 0.01, v => Math.round(v * 100) + ' %', true],
       ['desert', 'Wüste', 0, 0.7, 0.01, v => Math.round(v * 100) + ' %', false],
+      ['snow', 'Schnee (im Norden)', 0, 0.8, 0.01, v => (v ? Math.round(v * 100) + ' % der Karte' : 'kein Schnee'), false],
       ['rivers', 'Flüsse', 0, 20, 1, v => v, false],
       ['monsters', 'Monsterhorte (zufällig)', 0, 0.3, 0.01, v => (v ? Math.round(v * 100) + ' % der Provinzen' : 'keine'), false],
     ];
@@ -322,12 +324,13 @@
     ];
     const TOOLS = [
       ['rename', '✏️', 'Umbenennen'], ['start', '🏰', 'Startstadt'], ['wolves', '🐺', 'Wolfsrudel'],
-      ['trolls', '👹', 'Trollhöhle'], ['dragon', '🐉', 'Drachenhort'], ['hut', '🛖', 'Dorf'], ['erase', '🧽', 'Entfernen'],
+      ['trolls', '👹', 'Trollhöhle'], ['dragon', '🐉', 'Drachenhort'], ['worms', '🪱', 'Sandwürmer'], ['hut', '🛖', 'Dorf'], ['erase', '🧽', 'Entfernen'],
     ];
     const TOOL_HELP = {
       rename: 'Tippe auf eine Provinz, um sie umzubenennen.',
       start: 'Tippe auf Provinzen, um Startstädte festzulegen (höchstens 6). Dort beginnen die Reiche – benenne sie gleich mit ✏️.',
       wolves: 'Tippe auf eine Provinz, um ein Wolfsrudel zu setzen (leicht, kleiner Schatz).',
+      worms: 'Tippe auf eine Provinz, um ein Sandwurmnest zu setzen (stark – und gefährlich für Wüstenprovinzen daneben).',
       trolls: 'Tippe auf eine Provinz, um eine Trollhöhle zu setzen (zäh, mittlerer Schatz).',
       dragon: 'Tippe auf eine Provinz, um einen Drachenhort zu setzen (sehr stark, großer Schatz).',
       hut: 'Tippe auf Provinzen, um Dörfer zu setzen oder zu entfernen (Belohnung beim Erobern).',
@@ -370,7 +373,7 @@
       if (!world) return;
       const box = $('#forgeNames');
       const open = box.open;
-      const icon = { plain: '🌾', forest: '🌲', mountain: '⛰️', desert: '🏜️' };
+      const icon = { plain: '🌾', forest: '🌲', mountain: '⛰️', desert: '🏜️', snow: '❄️' };
       box.innerHTML = `<summary>📜 Alle Provinznamen (${world.cells.length})</summary><div class="namelist">` +
         world.cells.map((c, i) => `<label class="nrow ${F.starts.includes(i) ? 'start' : ''}"><span>${F.starts.includes(i) ? '🏰' : icon[c.terrain]}</span>
           <input data-ni="${i}" maxlength="24" value="${esc(c.name)}" class="${F.names[i] !== undefined ? 'custom' : ''}"></label>`).join('') + '</div>';
@@ -409,7 +412,7 @@
           g.fillText(c.name, x, y + 4);
         });
         $('#forgePvLoad').hidden = true;
-        const nTerr = { plain: 0, forest: 0, mountain: 0, desert: 0 };
+        const nTerr = { plain: 0, forest: 0, mountain: 0, desert: 0, snow: 0 };
         world.cells.forEach(c => nTerr[c.terrain]++);
         const nLairs = F.lairsManual ? Object.keys(F.lairs).length : Math.round(world.cells.length * F.monsters);
         $('#forgePvName').textContent = `🛠️ ${F.name || 'Ohne Namen'}`;
@@ -670,7 +673,10 @@
       S.conns.set(conn.peer, conn);
       const usedC = S.lobby.map(x => x.color);
       const color = K.COLORS.includes(d.color) && !usedC.includes(d.color) ? d.color : K.COLORS.find(c => !usedC.includes(c));
-      S.lobby.push({ name: String(d.name || 'Gast').slice(0, 16), type: 'human', cid: conn.peer, pid: String(d.pid || '').slice(0, 20) || null, color, avatar: safeAvatar(d.avatar) });
+      const base = String(d.name || 'Gast').trim().slice(0, 16) || 'Gast';
+      let nm = base, k = 2;
+      while (S.lobby.some(x => x.name.toLowerCase() === nm.toLowerCase())) nm = `${base.slice(0, 13)} ${k++}`;
+      S.lobby.push({ name: nm, type: 'human', cid: conn.peer, pid: String(d.pid || '').slice(0, 20) || null, color, avatar: safeAvatar(d.avatar) });
       return lobbyChanged();
     }
     if (d.t === 'action' && S.state) {
@@ -693,26 +699,56 @@
     }
   }
 
-  // Wer die Verbindung verloren hat, kann zurück in sein Reich (erkannt an der Geräte-ID oder am Namen)
+  // Wer die Verbindung verloren hat, kann zurück in sein Reich – erkannt NUR am geheimen Platz-Schlüssel oder an der
+  // Geräte-ID. Unbekannte (oder ein neues Gerät) darf nur der Gastgeber in ein verwaistes Reich lassen.
   function rejoin(conn, d) {
-    const st = S.state;
-    if (d.v !== APP_VERSION) return conn.send({ t: 'err', msg: 'Ihr habt verschiedene Versionen von Kingdoms. Bitte beide die Seite neu laden (Strg+F5 bzw. am Handy neu öffnen).', fatal: true });
-    const nm = String(d.name || '').trim().toLowerCase();
-    // gleiche Geräte-ID: auch wenn die alte Verbindung noch nicht als getrennt erkannt wurde
-    let p = st.players.findIndex(x => x.pid && x.pid === d.pid && x.cid !== 'host' && (x.away || (x.type === 'human' && x.cid !== conn.peer)));
-    if (p < 0) p = st.players.findIndex(x => x.away && x.name.toLowerCase() === nm);
-    const old = p >= 0 && st.players[p].cid && S.conns.get(st.players[p].cid);
-    if (old) { S.conns.delete(st.players[p].cid); try { old.close(); } catch { /* egal */ } }
-    if (p < 0) return conn.send({ t: 'err', msg: 'Das Spiel läuft bereits – nur Spieler, die rausgeflogen sind, können wieder beitreten.', fatal: true });
-    if (!st.players[p].alive) return conn.send({ t: 'err', msg: 'Dein Reich wurde inzwischen vernichtet.', fatal: true });
+    const st = S.state, seats = S.seats || [];
+    if (d.v !== APP_VERSION) return conn.send({ t: 'err', msg: 'Ihr habt verschiedene Versionen von Kingdoms. Der Gastgeber und du müsst dieselbe Version haben – am besten nach dem Spiel beide neu laden.', fatal: true });
+    let p = d.tok ? seats.findIndex((x, i) => i > 0 && x && x.tok === d.tok) : -1;
+    if (p < 0 && d.pid) p = seats.findIndex((x, i) => i > 0 && x && x.pid && x.pid === d.pid);
+    if (p >= 0) {
+      if (!st.players[p].alive) return conn.send({ t: 'err', msg: 'Dein Reich wurde inzwischen vernichtet.', fatal: true });
+      return seatGuest(conn, p);
+    }
+    const away = st.players.map((x, i) => i).filter(i => i > 0 && st.players[i].away && st.players[i].alive);
+    if (!away.length) return conn.send({ t: 'err', msg: 'Das Spiel läuft bereits.', fatal: true });
+    S.joinReqs = (S.joinReqs || []).filter(r => r.conn.open && r.conn.peer !== conn.peer);
+    S.joinReqs.push({ id: ++S.reqSeq, conn, name: String(d.name || 'Gast').slice(0, 16), pid: String(d.pid || '').slice(0, 20) || null });
+    conn.send({ t: 'wait' });
+    toast(`🔌 ${String(d.name || 'Gast').slice(0, 16)} möchte ins Spiel – siehe 👑 Reiche.`);
+    renderPlayers();
+  }
+
+  // Gastgeber lässt jemanden in ein verwaistes Reich
+  function approveJoin(id, p) {
+    const r = (S.joinReqs || []).find(x => x.id === id), st = S.state;
+    S.joinReqs = (S.joinReqs || []).filter(x => x.id !== id);
+    if (!r || !st || !st.players[p] || !st.players[p].away) return renderPlayers();
+    if (!r.conn.open) { toast('Der Spieler ist nicht mehr verbunden.'); return renderPlayers(); }
+    S.seats[p] = { pid: r.pid, tok: newTok() };
+    seatGuest(r.conn, p);
+  }
+  function denyJoin(id) {
+    const r = (S.joinReqs || []).find(x => x.id === id);
+    S.joinReqs = (S.joinReqs || []).filter(x => x.id !== id);
+    if (r && r.conn.open) r.conn.send({ t: 'err', msg: 'Der Gastgeber hat dich nicht ins laufende Spiel gelassen.', fatal: true });
+    renderPlayers();
+  }
+
+  function seatGuest(conn, p) {
+    const st = S.state, pl = st.players[p];
+    const old = pl.cid && pl.cid !== conn.peer && S.conns.get(pl.cid);
+    if (old) { S.conns.delete(pl.cid); try { old.close(); } catch { /* egal */ } }
+    S.seats[p] = S.seats[p] || { pid: null, tok: newTok() };
     S.conns.set(conn.peer, conn);
-    Object.assign(st.players[p], { type: 'human', level: null, cid: conn.peer, away: false, pid: d.pid || st.players[p].pid });
+    Object.assign(pl, { type: 'human', level: null, cid: conn.peer, away: false });
     if (S.lobby[p]) Object.assign(S.lobby[p], { cid: conn.peer, type: 'human' });
     st.logN = (st.logN || 0) + 1;
     st.log.push({ m: '🔌 {0} ist zurück und übernimmt wieder das eigene Reich.', ps: [p], n: st.logN });
     conn.send({ t: 'lobby', lobby: S.lobby, code: S.code, settings: S.settings });
+    conn.send({ t: 'seat', tok: S.seats[p].tok });
     conn.send({ t: 'geo', geo: st.geo });
-    toast(`${st.players[p].name} ist zurück!`);
+    toast(`${pl.name} ist zurück!`);
     afterChange();
   }
 
@@ -725,7 +761,8 @@
     if (S.state) {
       const p = S.state.players.findIndex(x => x.cid === cid);
       if (p >= 0) {
-        Object.assign(S.state.players[p], { type: 'ai', level: 'medium', cid: null, pid: null, away: false });
+        Object.assign(S.state.players[p], { type: 'ai', level: 'medium', cid: null, away: false });
+        if (S.seats) S.seats[p] = null;
         S.state.log.push({ m: '👢 {0} wurde vom Gastgeber entfernt – die KI übernimmt.', ps: [p] });
       }
       afterChange();
@@ -737,6 +774,7 @@
   }
 
   function onGuestLeft(conn) {
+    if (S.joinReqs && S.joinReqs.some(r => r.conn === conn)) { S.joinReqs = S.joinReqs.filter(r => r.conn !== conn); renderPlayers(); }
     if (S.conns.get(conn.peer) !== conn) return;
     S.conns.delete(conn.peer);
     if (S.state) {
@@ -762,7 +800,11 @@
     peer.on('open', () => {
       const conn = peer.connect(ID_PREFIX + code, { reliable: true });
       S.conn = conn;
-      conn.on('open', () => { conn._ok = true; conn.send({ t: 'join', name: myName(), v: APP_VERSION, pid: PID, color: PROFILE.color, avatar: PROFILE.avatar }); });
+      conn.on('open', () => {
+        conn._ok = true;
+        const lr = lastRoom();
+        conn.send({ t: 'join', name: myName(), v: APP_VERSION, pid: PID, tok: lr && lr.code === code ? lr.tok : null, color: PROFILE.color, avatar: PROFILE.avatar });
+      });
       conn.on('data', onGuestData);
       conn.on('close', () => conn._onLost && conn._onLost());
       conn._onLost = () => {
@@ -778,6 +820,13 @@
       toast(err.type === 'peer-unavailable' ? 'Raum nicht gefunden – vielleicht ist das Spiel schon vorbei.' : 'Verbindungsfehler: ' + err.type);
       if (err.type === 'peer-unavailable') toMenu();
     });
+  }
+
+  function rememberRoom() {
+    const lr = lastRoom();
+    const tok = S.seatTok || (lr && lr.code === S.code ? lr.tok : null);
+    store.set('kingdoms-lastroom', JSON.stringify({ code: S.code, tok, t: Date.now() }));
+    renderResume();
   }
 
   function rejoinRoom(code) {
@@ -798,9 +847,11 @@
       const first = !S.state;
       S.state = { ...d.state, geo: S.geo };
       S.me = S.state.players.findIndex(p => p.cid === S.peer.id);
-      if (first) { show('game'); S.avatars = S.lobby.map(p => p.avatar || null); store.set('kingdoms-lastroom', JSON.stringify({ code: S.code, t: Date.now() })); renderResume(); }
+      if (first) { show('game'); S.avatars = S.lobby.map(p => p.avatar || null); rememberRoom(); }
       render();
     } else if (d.t === 'chat') { S.chat.push(d.msg); renderChat(); }
+    else if (d.t === 'seat') { S.seatTok = String(d.tok || ''); if (S.state) rememberRoom(); }
+    else if (d.t === 'wait') toast('⏳ Das Spiel läuft schon – der Gastgeber muss dich erst hineinlassen…');
     else if (d.t === 'err') {
       if (d.fatal) { S.role = null; toMenu(); notice(d.msg); } else toast(d.msg);
     }
@@ -814,7 +865,9 @@
       if (n < S.lobby.length * 2) { toast(`Die Welt „${S.settings.world.name}“ hat nur ${n} Provinzen – zu wenig für ${S.lobby.length} Herrscher.`); return; }
     }
     S.state = K.createGame(S.lobby, { ...gameOpts(S.settings), ...extra });
-    S.state.players.forEach((p, i) => { p.pid = S.lobby[i].pid || null; });
+    S.seats = S.lobby.map((p, i) => (p.type === 'human' ? { pid: p.pid || null, tok: i === 0 ? null : newTok() } : null));
+    S.joinReqs = [];
+    S.lobby.forEach((p, i) => { const c = p.cid && S.conns.get(p.cid); if (c && c.open && S.seats[i]) c.send({ t: 'seat', tok: S.seats[i].tok }); });
     setTimeout(saveGame, 0);
     S.avatars = S.lobby.map(p => p.avatar || null);
     S.me = 0;
@@ -838,7 +891,7 @@
   function saveGame() {
     if (!S.state || S.tut || (S.role !== 'local' && S.role !== 'host')) return;
     try {
-      localStorage.setItem('kingdoms-save', JSON.stringify({ v: APP_VERSION, role: S.role, code: S.code, state: S.state, lobby: S.lobby, settings: S.settings, t: Date.now() }));
+      localStorage.setItem('kingdoms-save', JSON.stringify({ v: APP_VERSION, role: S.role, code: S.code, state: S.state, lobby: S.lobby, seats: S.seats || null, settings: S.settings, t: Date.now() }));
     } catch { /* Speicher voll – dann eben nicht */ }
   }
   function loadSave() {
@@ -872,8 +925,11 @@
     const st = S.state;
     for (const p of st.players) for (const k of K.RKEYS) if (p[k] == null) p[k] = 4;
     if (!st.pacts) { st.pacts = {}; for (const k of st.alliances || []) st.pacts[k] = { kind: 'alliance', since: 1, ends: null }; }
+    S.seats = sv.seats || st.players.map((p, i) => (p.pid ? { pid: p.pid, tok: null } : null));
+    for (const p of st.players) delete p.pid;
+    S.joinReqs = [];
     Object.assign(S, { seenBattle: st.battle ? st.battle.id : 0, seenMarch: st.march ? st.march.id : 0, seenVolley: st.volley ? st.volley.id : 0,
-      seenCrown: st.crownEvent ? st.crownEvent.id : 0, seenDemo: st.demolish ? st.demolish.id : 0, lastLogN: st.logN || 0 });
+      seenCrown: st.crownEvent ? st.crownEvent.id : 0, seenDemo: st.demolish ? st.demolish.id : 0, seenWorm: st.worm ? st.worm.id : 0, lastLogN: st.logN || 0 });
     if (sv.role === 'host') {
       // Gäste sind beim Neuladen rausgeflogen – die KI spielt für sie, bis sie wieder beitreten
       st.players.forEach((p, i) => { if (i !== 0 && p.type === 'human') Object.assign(p, { type: 'ai', level: 'medium', cid: null, away: true }); });
@@ -934,7 +990,7 @@
     const st = S.state, c = st.cells[i];
     return c.owner !== S.me && !K.allied(st, S.me, c.owner) && !truceProtected(i);
   };
-  const attackable = i => S.sel >= 0 && i >= 0 && S.state.cells[S.sel].n.includes(i) && hostileTo(i);
+  const attackable = i => S.sel >= 0 && i >= 0 && i !== S.sel && K.canStrike(S.state, S.sel, i) && hostileTo(i);
   // ausgewählte Divisionen der gewählten Provinz
   const selDivObjs = () => (S.sel >= 0 && S.selDivs ? S.state.cells[S.sel].divs.filter(v => S.selDivs.includes(v.id)) : []);
   const selUnits = () => K.divUnits(selDivObjs());
@@ -943,11 +999,14 @@
   const readyDivs = c => c.divs.filter(v => !v.done);
   const strongest = u => [...K.TYPES].reverse().find(t => u[t] > 0) || 'w';
   const svgEl = () => $('#map');
-  const SND = { recruit: 'recruit', build: 'build', research: 'research', demolish: null, end: 'click', propose: 'click', accept: 'click', break: 'lose', betray: 'lose', cancel: 'click', gift: 'recruit', decline: 'click', split: 'select', merge: 'select' };
+  const SND = { recruit: 'recruit', build: 'build', research: 'research', demolish: null, end: 'click', propose: 'click', accept: 'click', order: 'select', break: 'lose', betray: 'lose', cancel: 'click', gift: 'recruit', decline: 'click', split: 'select', merge: 'select' };
 
   let view = { x: 0, y: 0, w: 100, h: 100 };
   const dockSide = () => { const d = $('#actionbar').getBoundingClientRect(); return d.width && d.width < window.innerWidth * 0.6 && d.top < window.innerHeight / 3; };
-  function applyView() { svgEl().setAttribute('viewBox', `${view.x} ${view.y} ${view.w} ${view.h}`); }
+  function applyView() {
+    svgEl().setAttribute('viewBox', `${view.x} ${view.y} ${view.w} ${view.h}`);
+    if (S.state) svgEl().classList.toggle('zoomin', view.w < S.state.geo.W * 0.32);
+  }
   function fitView() {
     if (!S.state) return;
     const geo = S.state.geo, r = $('#mapwrap').getBoundingClientRect();
@@ -1095,9 +1154,9 @@
     wrap.addEventListener('wheel', e => { if (!S.state) return; e.preventDefault(); zoomAt(Math.exp(e.deltaY * 0.0015), e.clientX, e.clientY); }, { passive: false });
     wrap.addEventListener('mouseover', e => {
       const g = e.target.closest && e.target.closest('.prov, .ctr');
-      if (g && S.state && !pts.size) showInfo(+g.dataset.i);
+      if (g && S.state && !pts.size && S.pin < 0) showInfo(+g.dataset.i);
     });
-    wrap.addEventListener('mouseleave', () => { $('#info').hidden = true; });
+    wrap.addEventListener('mouseleave', () => { if (S.pin < 0) $('#info').hidden = true; });
     window.addEventListener('resize', () => { if (S.state && !$('#game').hidden) fitView(); });
     document.querySelector('.zoom').addEventListener('click', e => {
       const b = e.target.closest('[data-zoom]');
@@ -1114,6 +1173,7 @@
     if (!S.state) return;
     const st = S.state;
     setupMap();
+    if (!$('#info').hidden && S.infoCell >= 0 && (S.pin >= 0 || !canHover) && st.cells[S.infoCell]) showInfo(S.infoCell);
     const turnKey = st.round + '-' + st.turn;
     if (turnKey !== S.turnKey) {
       S.turnKey = turnKey;
@@ -1134,7 +1194,9 @@
     fixSelection();
     renderProvinces();
     renderNations();
+    renderRealms();
     renderLabels();
+    renderOrders();
     renderUnits();
     renderHud();
     renderBar();
@@ -1156,6 +1218,13 @@
     if (vo) { S.seenVolley = vo.id; playVolley(vo); }
     const dm = st.demolish && st.demolish.id !== S.seenDemo ? st.demolish : null;
     if (dm) { S.seenDemo = dm.id; const c = st.cells[dm.cell]; startFx(Array.from({ length: 10 }, (_, k) => `<circle class="fx-dust" cx="${c.lx - 27}" cy="${c.ly + 4}" r="${2 + (k % 3)}" style="--tx:${(Math.cos(k) * 16).toFixed(1)}px;--ty:${(Math.sin(k) * 12 - 6).toFixed(1)}px"/>`).join(''), 1200); Sound.play('build'); }
+    const wm = st.worm && st.worm.id !== S.seenWorm ? st.worm : null;
+    if (wm) {
+      S.seenWorm = wm.id;
+      const c = st.cells[wm.cell];
+      startFx(Array.from({ length: 14 }, (_, k) => `<circle class="fx-dust sand" cx="${c.lx}" cy="${c.ly + 4}" r="${2 + (k % 4)}" style="--tx:${(Math.cos(k * 0.9) * 22).toFixed(1)}px;--ty:${(Math.sin(k * 0.9) * 14 - 8).toFixed(1)}px"/>`).join(''), 1400);
+      if (wm.p === S.me) { toast(`🪱 Ein Sandwurm hat Truppen in ${c.name} verschlungen!`); Sound.play('lose'); }
+    }
     const m = st.march && st.march.id !== S.seenMarch ? st.march : null;
     if (m) { S.seenMarch = m.id; playMarch(m); }
     tutEvent({ kind: 'render' });
@@ -1178,7 +1247,7 @@
     S.splashTimer = setTimeout(() => { s.hidden = true; }, 1700);
   }
 
-  function deselect() { S.sel = -1; S.selDivs = null; S.split = null; S.shootFrom = -1; $('#info').hidden = true; }
+  function deselect() { S.sel = -1; S.selDivs = null; S.split = null; S.shootFrom = -1; S.pin = -1; $('#info').hidden = true; }
 
   // Provinz wählen: alle bereiten Divisionen sind ausgewählt
   function selectArmy(i) {
@@ -1233,7 +1302,7 @@
       const cls = ['prov'];
       if (c.owner < 0) cls.push('neutral');
       if (i === S.sel) cls.push('sel');
-      else if (selN.includes(i) && attackable(i)) cls.push('atk');
+      else if (attackable(i)) cls.push('atk');
       else if (marchT.includes(i)) cls.push('mov');
       if (mt && S.mode === 'recruit') cls.push(c.owner === S.me && K.canRecruit(c) ? 'can' : 'dim');
       if (mt && S.mode === 'build') cls.push((S.bldg === 'demolish' ? c.owner === S.me && ((c.building && !c.throne) || c.walls)
@@ -1255,6 +1324,44 @@
     const n = MapView.nations(st.geo, owners);
     $('#nations').innerHTML = Object.entries(n).map(([o, d]) =>
       `<path class="nb-out" d="${d}"/><path class="nb" d="${d}" stroke="${st.players[o].color}"/>`).join('');
+  }
+
+  // Reichsnamen quer über das Gebiet (wie in Strategiespielen von Paradox)
+  S.realms = store.get('kingdoms-realms') !== '0';
+  function renderRealms() {
+    const st = S.state, C = st.cells;
+    const key = S.realms + '|' + C.map(c => c.owner).join(',') + '|' + st.players.map(p => p.name).join(',');
+    if (S.realmKey === key) return;
+    S.realmKey = key;
+    if (!S.realms) { $('#realms').innerHTML = ''; return; }
+    let html = '';
+    st.players.forEach((pl, p) => {
+      if (!pl.alive) return;
+      const seen = new Set(), comps = [];
+      C.forEach((c, i) => {
+        if (c.owner !== p || seen.has(i)) return;
+        const q = [i]; seen.add(i);
+        for (let h = 0; h < q.length; h++) for (const j of C[q[h]].n) if (!seen.has(j) && C[j].owner === p) { seen.add(j); q.push(j); }
+        comps.push(q);
+      });
+      comps.sort((a, b) => b.length - a.length);
+      comps.filter((q, k) => q.length >= 3 || (k === 0 && q.length >= 2)).forEach(q => {
+        const P = q.map(i => [C[i].lx, C[i].ly]);
+        const mx = P.reduce((s, v) => s + v[0], 0) / P.length, my = P.reduce((s, v) => s + v[1], 0) / P.length;
+        let sxx = 0, syy = 0, sxy = 0;
+        for (const [x, y] of P) { sxx += (x - mx) ** 2; syy += (y - my) ** 2; sxy += (x - mx) * (y - my); }
+        let ang = 0.5 * Math.atan2(2 * sxy, sxx - syy);
+        ang = Math.max(-0.6, Math.min(0.6, ang));
+        const ux = Math.cos(ang), uy = Math.sin(ang);
+        const proj = P.map(([x, y]) => (x - mx) * ux + (y - my) * uy);
+        const len = Math.max(60, Math.max(...proj) - Math.min(...proj) + 50);
+        const name = pl.name.toUpperCase();
+        const fs = Math.max(9, Math.min(46, len / (name.length * 0.95)));
+        html += `<text class="realm" x="${mx.toFixed(1)}" y="${my.toFixed(1)}" font-size="${fs.toFixed(1)}" fill="${pl.color}"
+          transform="rotate(${(ang * 180 / Math.PI).toFixed(1)} ${mx.toFixed(1)} ${my.toFixed(1)})">${esc(name)}</text>`;
+      });
+    });
+    $('#realms').innerHTML = html;
   }
 
   // Gebäude stehen sichtbar in der Provinz; neu gebaute erscheinen mit einer kleinen Bau-Animation
@@ -1296,7 +1403,25 @@
   }
 
   // Divisionen wie bei Hearts of Iron: eine Figur je Division (stärkste Einheit) auf einem Sockel mit der Stärke
-  const FIG_W = { w: 12, a: 12, p: 12, l: 12, k: 17, c: 17, h: 17, t: 19, wo: 17, tr: 14, dr: 24 };
+  const FIG_W = { w: 12, a: 12, p: 12, l: 12, k: 17, c: 17, h: 17, t: 19, wo: 17, tr: 14, dr: 24, sw: 17 };
+  // geplante Märsche: gestrichelter Weg mit Fähnchen am Ziel (nur die eigenen)
+  function renderOrders() {
+    const st = S.state, C = st.cells;
+    let html = '';
+    C.forEach((c, i) => {
+      if (c.owner !== S.me) return;
+      const goals = [...new Set(c.divs.filter(v => v.goal != null).map(v => v.goal))];
+      for (const g of goals) {
+        const path = K.routeTo(st, S.me, i, g);
+        if (!path) continue;
+        const pts = [[c.lx, c.ly], ...path.map(j => [C[j].lx, C[j].ly])].map(([x, y]) => `${x},${y}`).join(' ');
+        html += `<polyline class="order-line" points="${pts}"/>
+          <g class="order-flag" transform="translate(${C[g].lx} ${C[g].ly - 6})"><path d="M0 0 V-14" stroke="#3a2a1a" stroke-width="1.2"/><path d="M0.5 -14 L9 -11 L0.5 -8 Z" fill="${st.players[S.me].color}" stroke="#1d150c" stroke-width=".6"/></g>`;
+      }
+    });
+    $('#orders').innerHTML = html;
+  }
+
   function renderUnits() {
     const st = S.state, C = st.cells;
     let html = '';
@@ -1439,7 +1564,7 @@
     const L = c.lair && K.LAIRS[c.lair];
     const kind = L ? `${L.icon} ${L.name}` : c.capital ? '👑 Hauptstadt' : c.throne ? '👑 Thronstadt' : c.building ? K.BUILDINGS[c.building].name : c.hut ? '🛖 Dorf' : '';
     const px = c.owner >= 0 && c.owner !== S.me ? K.pactOf(st, S.me, c.owner) : null;
-    const chips = [px ? `${K.PACTS[px.kind].icon} ${K.PACTS[px.kind].name}` : '', T.name, `${K.PSIZE[c.sz].name}e Provinz`, c.river ? '🏞️ Fluss' : '', kind, c.walls ? '🧱 Stadtmauern' : '', `🛡️ ×${K.defMult(c, false).toFixed(2).replace(/\.?0+$/, '')}`]
+    const chips = [px ? `${K.PACTS[px.kind].icon} ${K.PACTS[px.kind].name}` : '', T.name, `${K.PSIZE[c.sz].name}e Provinz`, c.river ? '🏞️ Fluss' : '', c.coast ? '⚓ Küste' : '', kind, c.walls ? '🧱 Stadtmauern' : '', `🛡️ ×${K.defMult(c, false).toFixed(2).replace(/\.?0+$/, '')}`]
       .filter(Boolean).map(t => `<span class="chip">${t}</span>`).join('');
     const mine = c.owner === S.me && st.turn === S.me;
     const divs = c.divs.map(v => `<div class="urow"><b class="dname">${esc(v.name)}</b><span class="chips">${unitChips(v.u)}</span>
@@ -1459,9 +1584,36 @@
       ${myTurn() && S.mode === 'build' && c.owner === S.me ? `<div class="buildable">🔨 Hier baubar: ${[...BLDG_ORDER.filter(b => K.canBuild(st, S.me, i, b)).map(b => K.BUILDINGS[b].name), ...(K.isCity(c) && !c.walls && K.hasTech(st, S.me, 'fortification') ? ['Stadtmauern'] : [])].join(', ') || (c.building ? `nichts – hier steht schon ${K.BUILDINGS[c.building].name}` : 'nichts (Forschung oder Gelände fehlt)')}</div>` : ''}
       ${L ? `<div class="treasure">💰 Schatz: +${L.gold} Gold, +${L.sci} Wissen – besiege die Monster!</div>` : ''}
       ${c.owner >= 0 ? `<div class="tag">Truppen ${K.total(c.u)} / ${K.capOf(c)} (Platz in der Provinz)</div>` : ''}
+      ${quickBuild(i)}
       ${divs}${extra}`;
     box.hidden = false;
+    box.classList.toggle('pinned', S.pin === i);
+    S.infoCell = i;
   }
+
+  // Bauen direkt aus dem Infofeld: alle Gebäude, die hier gerade gehen
+  function quickBuild(i) {
+    const st = S.state, c = st.cells[i];
+    if (!myTurn() || c.owner !== S.me || (canHover && S.pin !== i)) return '';
+    const pl = st.players[S.me];
+    const list = [...BLDG_ORDER.filter(b => K.canBuild(st, S.me, i, b)), ...(K.isCity(c) && !c.walls && K.hasTech(st, S.me, 'fortification') ? ['walls'] : [])];
+    const head = canHover ? `<div class="qhead"><b>🔨 Hier bauen</b><button data-unpin class="ghost" title="Schließen (Esc)">✕</button></div>` : '<div class="qhead"><b>🔨 Hier bauen</b></div>';
+    if (!list.length) return `<div class="qbuild">${head}<span class="tag">${c.capital ? 'In der Hauptstadt ist kein Platz für Gebäude.' : c.building ? `Hier steht schon: ${K.BUILDINGS[c.building].name}.` : 'Nichts möglich – Forschung oder passendes Gelände fehlt.'}</span></div>`;
+    return `<div class="qbuild">${head}<div class="qlist">${list.map(b => {
+      const I = bInfo(b), miss = K.lack(pl, I.cost, I.need || {});
+      return `<button data-qb="${b}" data-qc="${i}" ${miss ? 'disabled' : ''} title="${I.name}: ${I.desc}${miss ? ' – ' + miss : ''}">
+        <svg class="ico"><use href="${I.icon}" style="color:${pl.color}"/></svg><span>${I.name}<small>${I.desc}</small></span>${price(I.cost, I.need, pl)}</button>`;
+    }).join('')}</div></div>`;
+  }
+  $('#info').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b || b.disabled) return;
+    if (b.dataset.unpin !== undefined) { S.pin = -1; $('#info').hidden = true; return; }
+    if (b.dataset.qb) {
+      const i = +b.dataset.qc;
+      act(b.dataset.qb === 'walls' ? { type: 'walls', cell: i } : { type: 'build', cell: i, b: b.dataset.qb });
+    }
+  });
 
   function renderHud() {
     const st = S.state, pl = st.players[S.me], cur = st.players[st.turn];
@@ -1477,8 +1629,9 @@
         <span class="cells" title="Deine Provinzen">🏳️ ${s.cells}</span><span class="sep cells"></span>
         <span title="Deine Truppen (Unterhalt ${s.upkeep} Gold pro Runde)">⚔️ ${s.troops}</span>`;
     }
-    const canRes = pl && Object.keys(K.TECHS).some(t => K.canResearch(st, S.me, t) && pl.sci >= K.TECHS[t].cost);
-    $('#btnResearch').classList.toggle('ready', !!(canRes && myTurn()));
+    const nRes = researchable();
+    $('#btnResearch').classList.toggle('ready', !!(nRes && myTurn()));
+    $('#btnResearch').innerHTML = `🔬 <span>Forschung</span>${nRes ? `<i class="badge">${nRes}</i>` : ''}`;
     document.title = myTurn() ? '⚔️ Dein Zug! – Kingdoms' : 'Kingdoms';
   }
 
@@ -1501,7 +1654,8 @@
       }
       return `<div class="drow ${on ? 'on' : ''} ${v.done ? 'spent' : ''}">
           <button class="dpick" data-dv="${v.id}" ${v.done ? 'disabled' : ''} title="${on ? 'Abwählen' : 'Auswählen'}">${on ? '☑' : '☐'}</button>
-          <span class="aname">${esc(v.name)}<small>${v.done ? 'hat sich bewegt' : `bereit · ${mp + 0 * roads} Bew.`}</small></span>
+          <span class="aname">${esc(v.name)}<small>${v.done ? 'hat sich bewegt' : `bereit · ${mp + 0 * roads} Bew.`}${v.goal != null ? ` · 🚩 nach ${esc(st.cells[v.goal].name)}` : ''}</small></span>
+          ${v.goal != null ? `<button class="dsplit" data-dgo="${v.id}" title="Marschbefehl aufheben">🚩✕</button>` : ''}
           <span class="chips">${unitChips(v.u)}</span>
           <button class="dsplit" data-dsplit="${v.id}" ${K.total(v.u) > 1 ? '' : 'disabled'} title="Division teilen">✂️</button>
         </div>${splitUi}`;
@@ -1514,24 +1668,28 @@
         <button data-dmerge ${nSel >= 2 ? '' : 'disabled'} title="Ausgewählte Divisionen zu einer verbinden">🔗 Zusammenlegen</button></div>${rows}</div>`;
   }
 
+  // Forschungen, die man sich gerade leisten kann
+  const researchable = () => { const st = S.state, pl = st && st.players[S.me]; return pl ? Object.keys(K.TECHS).filter(t => K.canResearch(st, S.me, t) && pl.sci >= K.TECHS[t].cost).length : 0; };
+
   function renderBar() {
-    const st = S.state, bar = $('#actionbar');
-    if (!myTurn()) {
-      const dead = st.players[S.me] && !st.players[S.me].alive;
+    const st = S.state, bar = $('#actionbar'), mt = myTurn();
+    const dead = st.players[S.me] && !st.players[S.me].alive;
+    if (!mt && (dead || st.over || !st.players[S.me])) {
       bar.innerHTML = `<div class="wait">${dead ? '💀 Dein Reich ist gefallen – du kannst weiter zuschauen.' : st.over ? 'Das Spiel ist vorbei.' : `⏳ ${pName(st.turn)} ist am Zug…`}</div>`;
       return;
     }
-    const pl = st.players[S.me], gold = pl.gold;
+    const pl = st.players[S.me], gold = pl.gold, nRes = researchable();
     const tabs = `<div class="tabs">
         <button data-mode="recruit" class="${S.mode === 'recruit' ? 'on' : ''}" title="Taste 1">🛡️ Ausbilden</button>
         <button data-mode="build" class="${S.mode === 'build' ? 'on' : ''}" title="Taste 2">🔨 Bauen</button>
         <button data-mode="army" class="${S.mode === 'army' ? 'on' : ''}" title="Taste 3">⚔️ Armeen</button>
+        <button data-research class="restab ${nRes && mt ? 'ready' : ''}" title="Forschung (Taste 4 oder R)">🔬 Forschung${nRes ? `<i class="badge">${nRes}</i>` : ''}</button>
       </div>`;
     let status = '', right = '', shop = '';
     if (S.mode === 'recruit') {
       const btn = t => {
         const u = K.UNITS[t], locked = !K.unitUnlocked(st, S.me, t);
-        return `<button class="card-btn ${S.unit === t ? 'on' : ''} ${locked ? 'locked' : ''}" data-unit="${t}" ${locked || K.lack(pl, u.cost, u.need) ? 'disabled' : ''}
+        return `<button class="card-btn ${S.unit === t ? 'on' : ''} ${locked ? 'locked' : ''}" data-unit="${t}" ${locked || !mt || K.lack(pl, u.cost, u.need) ? 'disabled' : ''}
             title="${u.name}: Angriff ${u.atk}, Verteidigung ${u.def}, Bewegung ${u.mp}${u.note ? ' – ' + u.note : ''}">
           <svg class="ico"><use href="#u-${t}"/></svg>
           <span><b>${u.name}</b><small>${locked ? '🔒 ' + K.TECHS[u.tech].name : `A${u.atk} · V${u.def} · Bew. ${u.mp}`}</small></span>${price(u.cost, u.need, pl)}</button>`;
@@ -1547,9 +1705,14 @@
       const list = BUILD_CATS[S.bcat];
       const open = list.filter(b => { const I = bInfo(b); return !I.tech || K.hasTech(st, S.me, I.tech); });
       const closed = list.filter(b => !open.includes(b));
+      // wo kann man das gerade bauen?
+      const spots = b => st.cells.filter((c, i) => (b === 'walls' ? c.owner === S.me && K.isCity(c) && !c.walls
+        : b === 'demolish' ? c.owner === S.me && ((c.building && !c.throne) || c.walls) : K.canBuild(st, S.me, i, b))).length;
       const card = b => {
-        const I = bInfo(b), locked = I.tech && !K.hasTech(st, S.me, I.tech);
-        return `<button class="card-btn ${S.bldg === b ? 'on' : ''} ${locked ? 'locked' : ''}" data-bldg="${b}" ${locked || K.lack(pl, I.cost, I.need || {}) ? 'disabled' : ''} title="${I.name}: ${I.desc}. Kosten: ${priceText(I.cost, I.need)}. Wo: ${I.where}">
+        const I = bInfo(b), locked = I.tech && !K.hasTech(st, S.me, I.tech), n = locked ? 0 : spots(b);
+        return `<button class="card-btn ${S.bldg === b ? 'on' : ''} ${locked ? 'locked' : ''} ${!locked && !n ? 'nospot' : ''}" data-bldg="${b}" ${locked || !mt || K.lack(pl, I.cost, I.need || {}) ? 'disabled' : ''}
+            title="${I.name}: ${I.desc}. Kosten: ${priceText(I.cost, I.need) || 'nichts'}. Wo: ${I.where}${locked ? '' : ` – gerade an ${n} Ort${n === 1 ? '' : 'en'} möglich`}">
+          ${locked ? '' : `<i class="badge spot" title="mögliche Orte">${n}</i>`}
           ${I.emoji ? `<span class="demo-ico">${I.emoji}</span>` : `<svg class="ico"><use href="${I.icon}" style="color:${pl.color}"/></svg>`}
           <span><b>${I.name}</b><small>${locked ? '🔒 ' + K.TECHS[I.tech].name : I.desc}</small></span>${I.cost ? price(I.cost, I.need, pl) : ''}</button>`;
       };
@@ -1557,17 +1720,16 @@
         .map(([k, l]) => `<button data-bcat="${k}" class="${S.bcat === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
       const I = bInfo(S.bldg);
       status = S.bldg === 'demolish' ? 'Abreißen: tippe auf ein eigenes Gebäude oder eine Stadtmauer – die Hälfte der Kosten gibt es zurück'
-        : S.bldg === 'walls' ? 'Stadtmauern: tippe auf deine Hauptstadt oder eine Festung' : `${I.name}: tippe auf eine eigene Provinz (${I.where})`;
-      const more = closed.length ? (S.showLocked ? closed.map(card).join('')
-        : `<button class="card-btn more-locked" data-showlocked><span class="demo-ico">🔒</span><span><b>${closed.length} weitere</b><small>Forschung nötig</small></span></button>`) : '';
-      shop = `<div class="shop-wrap">${cats}<div class="shop">${open.map(card).join('')}${more}</div></div>`;
+        : S.bldg === 'walls' ? 'Stadtmauern: tippe auf deine Hauptstadt oder eine Festung' : `${I.name}: tippe auf eine leuchtende Provinz (${I.where}) – oder tippe eine eigene Provinz an und baue dort direkt`;
+      shop = `<div class="shop-wrap">${cats}<div class="shop">${open.map(card).join('')}${closed.map(card).join('')}</div></div>`;
     } else {
       status = S.sel >= 0 ? '<span class="lg mov"></span>marschieren · <span class="lg atk"></span>angreifen – Ziel antippen, Figur hinziehen oder Rechtsklick'
         : 'Tippe eine Figur (Division) oder eine Provinz an – oder ziehe eine Figur direkt auf ein Ziel';
-      if (S.sel >= 0) shop = armyPanel();
+      if (S.sel >= 0 && mt) shop = armyPanel();
     }
+    if (!mt) { status = `⏳ ${pName(st.turn)} ist am Zug – schau dich schon um und plane deinen nächsten Zug.`; right = ''; }
     bar.innerHTML = `${tabs}<span class="status">${status}</span>
-      <div class="right">${right}${S.mode === 'army' ? (() => { const n = st.cells.filter(c => c.owner === S.me && readyDivs(c).length).length; return n ? `<button id="bNext" title="Nächste bereite Armee (Taste N)">⏭ ${n}</button>` : ''; })() : ''}<button id="bEnd" class="endturn ${S.mode === 'army' ? 'primary' : ''}" title="Leertaste">Zug beenden ➜</button></div>${shop}`;
+      <div class="right">${right}${mt && S.mode === 'army' ? (() => { const n = st.cells.filter(c => c.owner === S.me && readyDivs(c).length).length; return n ? `<button id="bNext" title="Nächste bereite Armee (Taste N)">⏭ ${n}</button>` : ''; })() : ''}${mt ? `<button id="bEnd" class="endturn ${S.mode === 'army' ? 'primary' : ''}" title="Leertaste">Zug beenden ➜</button>` : '<span class="tag waiting">⏳ warten…</span>'}</div>${shop}`;
   }
 
   $('#actionbar').onclick = e => {
@@ -1575,6 +1737,7 @@
     if (!t || t.disabled) return;
     const d = t.dataset, st = S.state;
     if (d.mode) { S.mode = d.mode; deselect(); Sound.play('click'); tutEvent({ kind: 'mode' }); render(); }
+    else if (d.research !== undefined) $('#btnResearch').click();
     else if (d.unit) { S.unit = d.unit; Sound.play('click'); renderBar(); }
     else if (d.bldg) { S.bldg = d.bldg; Sound.play('click'); renderBar(); renderProvinces(); }
     else if (d.bcat) {
@@ -1590,6 +1753,7 @@
     else if (d.shoot !== undefined) { S.shootFrom = S.sel; Sound.play('select'); toast('Wähle ein Ziel für den Fernschuss (gelb markiert).'); render(); }
     else if (d.dall !== undefined) { S.selDivs = readyDivs(st.cells[S.sel]).map(v => v.id); Sound.play('click'); render(); }
     else if (d.dmerge !== undefined) { act({ type: 'merge', cell: S.sel, divs: [...S.selDivs] }); }
+    else if (d.dgo) { act({ type: 'order', cell: S.sel, divs: [+d.dgo], to: null }); toast('Marschbefehl aufgehoben.'); }
     else if (d.dsplit) {
       const v = st.cells[S.sel].divs.find(x => x.id === +d.dsplit);
       const half = K.emptyU();
@@ -1636,6 +1800,10 @@
     if (!canHover || !myTurn()) showInfo(i);
     if (!myTurn()) return;
     const c = st.cells[i], gold = st.players[S.me].gold;
+    // am PC: Klick auf eine eigene Provinz heftet das Infofeld an – dort kann man direkt bauen
+    if (canHover && !dropped && S.mode !== 'army') {
+      if (c.owner === S.me) { S.pin = i; showInfo(i); } else if (S.pin >= 0) { S.pin = -1; showInfo(i); }
+    }
     if (S.mode === 'recruit' && !dropped) {
       if (c.owner !== S.me || !K.canRecruit(c)) return toast('Einheiten bildest du in deiner Hauptstadt 👑, in Festungen oder Kasernen aus.');
       const U = K.UNITS[S.unit];
@@ -1666,7 +1834,14 @@
         if (K.allied(st, S.me, c.owner)) { const x = K.pactOf(st, S.me, c.owner); return toast(`${K.PACTS[x.kind].icon} Ihr habt ${x.kind === 'peace' ? 'Frieden' : 'ein Bündnis'} – kündige zuerst den Vertrag (👑 Reiche).`); }
         if (truceProtected(i)) return toast(`Friedenszeit: Spieler können erst ab Runde ${st.truce + 1} angegriffen werden.`);
       }
-      if (c.owner === S.me && dropped) return toast(`Zu weit – diese Truppen schaffen ${K.mpOf(st, S.me, selUnits())} Provinz(en) pro Zug.`);
+      if (c.owner === S.me && (dropped || !readyDivs(c).length)) {
+        const route = K.routeTo(st, S.me, from, i);
+        if (!route) return toast('Dorthin gibt es keinen Landweg durch eigenes oder verbündetes Gebiet.');
+        const mp = Math.max(1, K.mpOf(st, S.me, selUnits())), divs = [...S.selDivs];
+        S.selPref = [from]; S.selDivs = null;
+        toast(`🚩 Marschbefehl: Die Truppen ziehen jetzt jede Runde automatisch weiter nach ${c.name} (etwa ${Math.ceil(route.length / mp)} Runden).`);
+        return act({ type: 'order', cell: from, divs, to: i });
+      }
       if (dropped) return toast('Dorthin kommen diese Truppen nicht.');
     }
     if (c.owner === S.me && readyDivs(c).length) { if (i === S.sel) { deselect(); render(); } else selectArmy(i); return; }
@@ -1679,7 +1854,7 @@
 
   function openPlanner(target) {
     const st = S.state, C = st.cells;
-    const srcs = C[target].n.filter(j => C[j].owner === S.me && readyDivs(C[j]).length);
+    const srcs = C.map((c, j) => j).filter(j => C[j].owner === S.me && readyDivs(C[j]).length && K.canStrike(st, j, target));
     S.plan = { target, picks: {} };
     for (const j of srcs) S.plan.picks[j] = j === S.sel ? [...S.selDivs] : [];
     $('#planner').hidden = false;
@@ -1706,7 +1881,7 @@
       const rows = readyDivs(c).map(v => `<button class="drow pick ${ids.includes(v.id) ? 'on' : ''}" data-pj="${j}" data-pv="${v.id}">
           <span class="dpick">${ids.includes(v.id) ? '☑' : '☐'}</span><span class="aname">${esc(v.name)}</span><span class="chips">${unitChips(v.u)}</span></button>`).join('');
       const left = c.divs.filter(v => !ids.includes(v.id)).reduce((s, v) => s + K.total(v.u), 0);
-      return `<div class="psrc"><div class="ahead"><b>Aus ${esc(c.name)}</b>
+      return `<div class="psrc"><div class="ahead"><b>${c.n.includes(pl.target) ? '' : '⛵ '}Aus ${esc(c.name)}</b>
           <span class="tag">${left ? `${left} Einheiten bleiben zurück` : '⚠️ Provinz bleibt leer'}</span>
           <button data-pall="${j}">Alle</button><button data-pnone="${j}">Keine</button></div>${rows}</div>`;
     }).join('');
@@ -1752,17 +1927,49 @@
 
   // ---------- Tastenkürzel ----------
 
+  const KEYS = [['Leertaste', 'Zug beenden'], ['1 / 2 / 3', 'Ausbilden / Bauen / Armeen'], ['4 oder R', 'Forschung'], ['N', 'nächste bereite Armee'],
+    ['A', 'alle Divisionen der Provinz wählen'], ['S', 'gewählte Division teilen (halbe-halbe)'], ['M', 'gewählte Divisionen zusammenlegen'],
+    ['T', 'Statistik'], ['D', 'Reiche und Diplomatie'], ['F', 'ganze Karte'], ['H', 'Spielanleitung'], ['Esc', 'abbrechen / schließen'], ['Enter', 'Angriff bestätigen'],
+    ['Rechtsklick / Figur ziehen', 'marschieren oder angreifen – weit weg: Marschbefehl über mehrere Runden']];
+  function showKeys() {
+    const o = $('#confirm');
+    o.innerHTML = `<div class="modal center keys"><h2>⌨️ Tastenkürzel</h2><table class="keytable">${KEYS.map(([k, v]) => `<tr><td><kbd>${k}</kbd></td><td>${v}</td></tr>`).join('')}</table>
+      <div class="row"><button data-a="1" class="primary">OK</button></div></div>`;
+    o.hidden = false;
+    o.onclick = e => { if (e.target === o || e.target.closest('[data-a]')) o.hidden = true; };
+  }
+  // Division halbieren (Taste S)
+  function splitHalf() {
+    const st = S.state, c = S.sel >= 0 && st.cells[S.sel];
+    const v = c && S.selDivs && c.divs.find(x => x.id === S.selDivs[0]);
+    if (!v) return toast('Wähle zuerst eine Division (Armeen).');
+    const tot = K.total(v.u);
+    if (tot < 2) return toast('Eine einzelne Einheit kann man nicht teilen.');
+    const half = K.emptyU();
+    for (const t of K.TYPES) half[t] = Math.floor(v.u[t] / 2);
+    let need = Math.floor(tot / 2) - K.total(half);
+    for (const t of K.TYPES) if (need > 0 && v.u[t] - half[t] * 2 > 0) { half[t]++; need--; }
+    act({ type: 'split', cell: S.sel, div: v.id, units: half });
+  }
+
   document.addEventListener('keydown', e => {
-    if (e.target.matches('input, textarea') || $('#game').hidden || !S.state) return;
+    if ((e.target.matches && e.target.matches('input, textarea')) || $('#game').hidden || !S.state) return;
     const k = e.key;
     if (k === 'Escape') {
-      if (!$('#planner').hidden) $('#planner').hidden = true;
+      if (!$('#stats').hidden) $('#stats').hidden = true;
+      else if (!$('#planner').hidden) $('#planner').hidden = true;
       else if (!$('#research').hidden) $('#research').hidden = true;
       else if (!$('#help').hidden) $('#help').hidden = true;
       else { deselect(); render(); }
     } else if (k === 'Enter' && !$('#planner').hidden) launchAttack();
     else if (k === ' ' && $('#planner').hidden && $('#confirm').hidden) { e.preventDefault(); endTurn(); }
-    else if (['1', '2', '3'].includes(k) && myTurn()) { S.mode = ['recruit', 'build', 'army'][+k - 1]; deselect(); tutEvent({ kind: 'mode' }); render(); }
+    else if (['1', '2', '3'].includes(k)) { S.mode = ['recruit', 'build', 'army'][+k - 1]; deselect(); tutEvent({ kind: 'mode' }); render(); }
+    else if (k === '4') $('#btnResearch').click();
+    else if ((k === 's' || k === 'S') && myTurn()) splitHalf();
+    else if ((k === 'm' || k === 'M') && myTurn() && S.sel >= 0 && S.selDivs && S.selDivs.length >= 2) act({ type: 'merge', cell: S.sel, divs: [...S.selDivs] });
+    else if ((k === 'a' || k === 'A') && myTurn() && S.sel >= 0) { S.selDivs = readyDivs(S.state.cells[S.sel]).map(v => v.id); render(); }
+    else if (k === 't' || k === 'T') { if ($('#stats').hidden) openStats(); else $('#stats').hidden = true; }
+    else if (k === 'd' || k === 'D') $('#side').classList.toggle('open');
     else if ((k === 'n' || k === 'N') && myTurn()) nextArmy();
     else if (k === 'r' || k === 'R') $('#btnResearch').click();
     else if (k === 'h' || k === 'H') openHelp();
@@ -1820,14 +2027,20 @@
     }).join('');
 
     const incoming = st.over ? [] : st.proposals.filter(x => x.to === S.me);
-    $('#proposals').innerHTML = incoming.map(x => `
+    const reqs = S.role === 'host' && !st.over ? (S.joinReqs || []) : [];
+    const awayIds = st.players.map((x, i) => i).filter(i => i > 0 && st.players[i].away && st.players[i].alive);
+    $('#proposals').innerHTML = reqs.map(r => `
+      <div class="proposal join"><div>🔌 <b>${esc(r.name)}</b> möchte ins laufende Spiel.
+        <small class="tag">Nur wenn du sicher bist, wer das ist: Lass ihn ein Reich übernehmen, dessen Spieler die Verbindung verloren hat.</small></div>
+        <div class="row">${awayIds.map(i => `<button data-jr="${r.id}" data-jp="${i}" class="primary">Als ${esc(st.players[i].name)}</button>`).join('')}<button data-jx="${r.id}">Ablehnen</button></div>
+      </div>`).join('') + incoming.map(x => `
       <div class="proposal"><div>${x.kind === 'peace'
         ? `🕊️ ${pName(x.from)} bietet dir <b>Frieden</b> an.<small class="tag">Ihr könnt euch nicht mehr angreifen – bis einer kündigt.</small>`
         : `📜 ${pName(x.from)} bietet dir ein <b>Bündnis</b> an.<small class="tag">Kein Angriff, je +1 Gold und +1 Wissen pro Runde, und wenn nur noch Verbündete übrig sind, siegt ihr gemeinsam.</small>`}</div>
         <div class="row"><button data-acc="${x.from}" class="primary">Annehmen</button><button data-dec="${x.from}">Ablehnen</button></div>
       </div>`).join('');
     // neue Angebote fallen auch auf, wenn die Seitenleiste zu ist (Handy)
-    $('#btnSide').classList.toggle('ready', incoming.length > 0);
+    $('#btnSide').classList.toggle('ready', incoming.length + reqs.length > 0);
     const key = incoming.map(x => x.from + ':' + x.kind + ':' + x.round).join(',');
     if (key && key !== S.propKey) {
       const x = incoming[incoming.length - 1];
@@ -1835,6 +2048,100 @@
     }
     S.propKey = key;
   }
+
+  // ---------- Statistik ----------
+
+  const METRICS = [['Provinzen', 0], ['Truppen', 1], ['Punkte', 2], ['Gold pro Runde', 3], ['Wissen pro Runde', 4]];
+  function openStats(tab) {
+    S.statTab = tab || S.statTab || 'table';
+    S.statMetric = S.statMetric || 0;
+    renderStats();
+    $('#stats').hidden = false;
+  }
+  function chartSVG(st, m) {
+    const hist = st.hist || [];
+    if (hist.length < 2) return '<p class="tag">Der Verlauf erscheint ab Runde 2.</p>';
+    const W = 640, H = 260, L = 34, R = 10, T = 12, B = 26;
+    const rounds = hist.map(h => h.r), r0 = rounds[0], r1 = rounds[rounds.length - 1];
+    let max = 1, min = 0;
+    for (const h of hist) for (const v of h.d) { max = Math.max(max, v[m]); min = Math.min(min, v[m]); }
+    const X = r => L + (r - r0) / Math.max(1, r1 - r0) * (W - L - R), Y = v => T + (1 - (v - min) / (max - min || 1)) * (H - T - B);
+    const ticks = [0, 0.25, 0.5, 0.75, 1].map(f => Math.round(min + (max - min) * f));
+    let svg = `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">`;
+    for (const t of [...new Set(ticks)]) svg += `<line x1="${L}" x2="${W - R}" y1="${Y(t)}" y2="${Y(t)}" class="grid"/><text x="${L - 6}" y="${Y(t) + 4}" class="ax" text-anchor="end">${t}</text>`;
+    const step = Math.max(1, Math.ceil((r1 - r0) / 8));
+    for (let r = r0; r <= r1; r += step) svg += `<text x="${X(r)}" y="${H - 8}" class="ax" text-anchor="middle">${r}</text>`;
+    st.players.forEach((pl, i) => {
+      const pts = hist.filter(h => h.d[i]).map(h => `${X(h.r).toFixed(1)},${Y(h.d[i][m]).toFixed(1)}`).join(' ');
+      svg += `<polyline points="${pts}" fill="none" stroke="${pl.color}" stroke-width="${i === S.me ? 3.2 : 2}" stroke-linejoin="round" ${pl.alive ? '' : 'stroke-dasharray="5 4" opacity=".6"'}/>`;
+    });
+    return svg + '</svg>';
+  }
+  function renderStats() {
+    const st = S.state, o = $('#stats');
+    if (!st) return;
+    const rows = st.players.map((pl, i) => {
+      const x = K.stats(st, i), r = pl.rec || {};
+      return `<tr class="${pl.alive ? '' : 'dead'}" style="--pc:${pl.color}"><td class="who">${avatarHTML(S.avatars && S.avatars[i], pl.name, pl.color, 'xs')} ${esc(pl.name)}${i === S.me ? ' (Du)' : ''}</td>
+        <td>${x.cells}</td><td>${x.troops}</td><td>${x.income >= 0 ? '+' : ''}${x.income}</td><td>+${x.sciIncome}</td><td>${x.techs}</td><td>${x.buildings}</td>
+        <td>${r.won || 0} / ${r.lost || 0}</td><td>${r.defended || 0}</td><td>${r.conq || 0}</td><td>${r.killed || 0}</td><td>${r.casualties || 0}</td><td>${r.monsters || 0}</td><td><b>${K.score(st, i)}</b></td></tr>`;
+    }).join('');
+    const table = `<div class="tscroll"><table class="unit-table stat-table"><thead><tr><th>Herrscher</th><th>🏳️ Prov.</th><th>⚔️ Truppen</th><th>🪙 Gold/R</th><th>📜 Wissen/R</th>
+      <th>🔬 Techs</th><th>🏠 Bauten</th><th>Angriffe ✓/✗</th><th>🛡️ abgewehrt</th><th>🚩 erobert</th><th>💀 besiegt</th><th>🩸 verloren</th><th>🐉 Monster</th><th>Punkte</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>`;
+    const chart = `<div class="seg metrics">${METRICS.map(([l, k]) => `<button data-sm="${k}" class="${S.statMetric === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+      ${chartSVG(st, S.statMetric)}
+      <div class="legend">${st.players.map(pl => `<span><i style="background:${pl.color}"></i>${esc(pl.name)}</span>`).join('')}</div>`;
+    o.innerHTML = `<div class="modal wide stats">
+      <div class="mhead"><h2>📊 Statistik · Runde ${Math.min(st.round, st.maxRounds)}</h2><button data-sclose class="ghost" title="Schließen (Esc)">✕</button></div>
+      <div class="seg"><button data-st="table" class="${S.statTab === 'table' ? 'on' : ''}">Übersicht</button><button data-st="chart" class="${S.statTab === 'chart' ? 'on' : ''}">Verlauf</button></div>
+      ${S.statTab === 'table' ? table : chart}</div>`;
+  }
+  $('#stats').addEventListener('click', e => {
+    if (e.target.id === 'stats' || e.target.closest('[data-sclose]')) { $('#stats').hidden = true; return; }
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.st) { S.statTab = b.dataset.st; renderStats(); }
+    else if (b.dataset.sm) { S.statMetric = +b.dataset.sm; renderStats(); }
+    else if (b.dataset.accreset !== undefined) ask('Deine ganze Statistik löschen?', 'Löschen').then(ok => { if (ok) { store.set('kingdoms-acc', ''); openAccStats(); } });
+  });
+
+  // ---------- Kontostatistik (auf diesem Gerät) ----------
+  const accLoad = () => { try { return JSON.parse(store.get('kingdoms-acc') || 'null') || {}; } catch { return {}; } };
+  function recordGame(st) {
+    if (S.tut || !st || !st.id || !st.players[S.me]) return;
+    const a = accLoad();
+    a.counted = a.counted || [];
+    if (a.counted.includes(st.id)) return;
+    a.counted = [...a.counted, st.id].slice(-30);
+    const winners = st.winners && st.winners.length ? st.winners : [st.winner];
+    const won = winners.includes(S.me), r = st.players[S.me].rec || {};
+    const add = (k, v) => { a[k] = (a[k] || 0) + (v || 0); };
+    add('games', 1); add(won ? 'wins' : 'losses', 1); if (won && winners.length > 1) add('shared', 1);
+    for (const k of ['won', 'lost', 'defended', 'conq', 'killed', 'casualties', 'recruited', 'built', 'monsters']) add(k, r[k]);
+    add('rounds', Math.min(st.round, st.maxRounds));
+    a.best = Math.max(a.best || 0, K.score(st, S.me));
+    a.online = (a.online || 0) + (S.role === 'local' ? 0 : 1);
+    store.set('kingdoms-acc', JSON.stringify(a));
+  }
+  function openAccStats() {
+    const a = accLoad(), o = $('#stats');
+    const g = a.games || 0, pct = g ? Math.round((a.wins || 0) / g * 100) : 0;
+    const tile = (ic, v, l) => `<div class="tile"><span>${ic}</span><b>${v}</b><small>${l}</small></div>`;
+    o.innerHTML = `<div class="modal stats acc">
+      <div class="mhead"><h2>📊 Meine Statistik</h2><button data-sclose class="ghost" title="Schließen">✕</button></div>
+      <div class="accrow">${avatarHTML(PROFILE.avatar, myName(), PROFILE.color, 'big')}<div><b>${esc(myName())}</b><br><span class="tag">gespeichert auf diesem Gerät</span></div></div>
+      ${g ? `<div class="tiles">
+        ${tile('🎮', g, 'Spiele')}${tile('🏆', a.wins || 0, 'Siege')}${tile('📈', pct + ' %', 'Siegquote')}${tile('🤝', a.shared || 0, 'gemeinsame Siege')}
+        ${tile('🌐', a.online || 0, 'Online-Spiele')}${tile('⭐', a.best || 0, 'beste Punktzahl')}${tile('🚩', a.conq || 0, 'Provinzen erobert')}${tile('⚔️', `${a.won || 0} / ${a.lost || 0}`, 'Angriffe gewonnen / verloren')}
+        ${tile('🛡️', a.defended || 0, 'Angriffe abgewehrt')}${tile('💀', a.killed || 0, 'Feinde besiegt')}${tile('🛠️', a.recruited || 0, 'Truppen ausgebildet')}${tile('🏠', a.built || 0, 'Gebäude gebaut')}
+        ${tile('🐉', a.monsters || 0, 'Monsterhorte erobert')}${tile('⏳', a.rounds || 0, 'Runden gespielt')}
+      </div><div class="row end"><button data-accreset class="ghost-btn">Statistik zurücksetzen</button></div>`
+        : '<p class="tag">Noch keine fertigen Spiele. Spiel eine Partie zu Ende – dann steht hier, wie gut du bist.</p>'}
+    </div>`;
+    o.hidden = false;
+  }
+  $('#btnMyStats').onclick = openAccStats;
 
   function openGift(t) {
     const st = S.state, me = st.players[S.me], o = $('#confirm');
@@ -1866,6 +2173,8 @@
     else if (d.cancel && await ask(`Vertrag mit ${pName(+d.cancel)} kündigen? Er gilt noch bis zum Ende der nächsten Runde – danach dürft ihr euch angreifen.`, '📜 Kündigen')) act({ type: 'cancel', target: +d.cancel });
     else if (d.betray && await ask(`Vertrag mit ${pName(+d.betray)} <b>sofort</b> brechen? Das ist Verrat: Alle sehen es, und 8 Runden lang will niemand einen Vertrag mit dir.`, '🗡️ Verrat begehen')) act({ type: 'betray', target: +d.betray });
     else if (d.gift) openGift(+d.gift);
+    else if (d.jr) approveJoin(+d.jr, +d.jp);
+    else if (d.jx) denyJoin(+d.jx);
     else if (d.acc) act({ type: 'accept', from: +d.acc });
     else if (d.dec) act({ type: 'decline', from: +d.dec });
     else if (d.e) sendChat(d.e);
@@ -1975,7 +2284,7 @@
       <div class="tscroll"><table class="unit-table"><thead><tr><th>Gelände</th><th>Gold</th><th>Rohstoff</th><th>Verteidigung</th></tr></thead><tbody>${terr}</tbody></table></div>
       <p>Die Hauptstadt bringt zusätzlich +3 Gold, +2 Wissen, +2 Nahrung, +1 Holz und +1 Stein und verteidigt +50 %. 🛖 Dörfer geben beim Erobern Gold, Wissen oder Rohstoffe.</p>
       <h3>Tastenkürzel</h3>
-      <p><b>Leertaste</b> Zug beenden · <b>1 / 2 / 3</b> Ausbilden / Bauen / Armeen · <b>R</b> Forschung · <b>H</b> Hilfe · <b>F</b> ganze Karte · <b>Esc</b> abbrechen · <b>Enter</b> Angriff bestätigen</p>
+      <p>${KEYS.map(([k, v]) => `<b>${k}</b> ${v}`).join(' · ')}</p>
       <h3>Schwierigkeit</h3>
       <p>Die KI „Schwer“ greift aus mehreren Provinzen gleichzeitig an und bekommt wie in Civilization +20 % Gold und Wissen.</p>
       <h3>Fernschuss und Abriss</h3>
@@ -1985,11 +2294,20 @@
       <h3>Stadtmauern</h3>
       <p>Mit der Forschung <b>🧱 Befestigung</b> baust du unter „Bauen → Militär“ Stadtmauern um Hauptstadt und Festungen (${priceText(K.WALLS_COST, K.WALLS_NEED)}): +50 % Verteidigung.
         Katapulte und Triboke brechen Mauern nur zur Hälfte (+25 % bleiben). Eroberte Mauern gehören dem Eroberer.</p>
+      <h3>Marschbefehle</h3>
+      <p>Ziehst du eine Division auf eine <b>weit entfernte eigene Provinz</b> (oder klickst sie mit der rechten Maustaste an), bekommt sie einen <b>Marschbefehl 🚩</b>:
+        Sie zieht dann jede Runde von selbst weiter, bis sie ankommt. Der Weg ist auf der Karte gestrichelt. Unter ⚔️ Armeen kannst du den Befehl mit 🚩✕ aufheben.</p>
+      <h3>Seefahrt und Verbündete</h3>
+      <p>Mit der Forschung <b>⛵ Seefahrt</b> baust du in Küstenprovinzen einen <b>Hafen</b>. Truppen in einem Hafen segeln zu jeder eigenen Küstenprovinz in Reichweite – oder greifen dort direkt eine fremde Küste an.<br>
+        Durch das Land von <b>🤝 Verbündeten</b> darfst du hindurchmarschieren (stehen bleiben geht dort nicht).</p>
+      <h3>Schnee und Sandwürmer</h3>
+      <p>❄️ <b>Schnee</b> bedeckt den Norden: wenig Gold, etwas Stein – aber +35 % Verteidigung. 🪱 <b>Sandwürmer</b> hausen in der Wüste:
+        Ihr Nest ist ein großer Schatz, doch Wüstenprovinzen daneben verlieren ab und zu Truppen an die Würmer.</p>
       <h3>Truppenlimit</h3>
       <p>In jede Provinz passen nur begrenzt viele Truppen: klein 18, mittel 20, groß 22 – Hauptstädte und Festungen +6. Das gilt beim Ausbilden, Marschieren und Angreifen.</p>
       <h3>Monster</h3>
       <p>${Object.values(K.LAIRS).map(L => `<b>${L.icon} ${L.name}</b>: Schatz +${L.gold} Gold, +${L.sci} Wissen${K.RKEYS.filter(k => L[k]).map(k => `, +${L[k]} ${K.RES[k].name}`).join('')}`).join('<br>')}<br>
-        Monster bleiben in ihrem Hort. Wer sie besiegt, bekommt den Schatz und die Provinz. Wölfe sind leicht, Trolle zäh (Verteidigung 5), Drachen sehr stark (Verteidigung 16).</p>
+        Monster bleiben in ihrem Hort. Wer sie besiegt, bekommt den Schatz und die Provinz. Wölfe sind leicht, Trolle zäh (Verteidigung 5), Sandwürmer stark (7/7), Drachen sehr stark (Verteidigung 16).</p>
       <h3>Spielmodi</h3>
       <p><b>⚔️ Klassisch:</b> Vernichte alle Gegner – oder hab nach 40 Runden die meisten Punkte.<br>
         <b>👑 Thronkampf:</b> In der Mitte liegt die befestigte Thronstadt. Wer sie zu Beginn seines Zuges hält, bekommt eine Krone – 5 Kronen gewinnen.<br>
@@ -2144,6 +2462,7 @@
     S.overShown = true;
     const winners = st.winners && st.winners.length ? st.winners : [st.winner];
     const won = winners.includes(S.me), shared = winners.length > 1;
+    recordGame(st);
     const canRestart = S.role !== 'guest';
     const ranking = st.players.map((p, i) => ({ i, s: K.score(st, i) })).sort((a, b) => b.s - a.s)
       .map(r => `<li>${pName(r.i)} <span class="tag">${r.s} Punkte</span></li>`).join('');
@@ -2156,10 +2475,12 @@
         <ol class="ranking">${ranking}</ol>
         <div class="row">
           <button id="oMenu">Hauptmenü</button>
+          <button id="oStats">📊 Statistik</button>
           ${canRestart ? '<button id="oAgain" class="primary">Nochmal spielen</button>' : '<span class="tag">Warte auf den Gastgeber…</span>'}
         </div></div>`;
       o.hidden = false;
       $('#oMenu').onclick = toMenu;
+      $('#oStats').onclick = () => openStats('chart');
       if (canRestart) $('#oAgain').onclick = () => {
         if (S.role === 'host') {
           // zurück in die Lobby; abgesprungene Spieler fallen raus
@@ -2177,6 +2498,7 @@
   function renderGameMenu() {
     $('#gmMusic').textContent = `Musik: ${Sound.music ? 'an' : 'aus'}`;
     $('#gmSfx').textContent = `Soundeffekte: ${Sound.sfx ? 'an' : 'aus'}`;
+    $('#gmRealms').textContent = `Reichsnamen auf der Karte: ${S.realms ? 'an' : 'aus'}`;
   }
   $('#gameMenu').addEventListener('click', async e => {
     const b = e.target.closest('[data-gm]');
@@ -2187,7 +2509,18 @@
     else if (a === 'music') { Sound.toggleMusic(); renderSoundButtons(); renderGameMenu(); }
     else if (a === 'sfx') { Sound.toggleSfx(); renderSoundButtons(); renderGameMenu(); }
     else if (a === 'fit') { $('#gameMenu').hidden = true; fitView(); }
-    else if (a === 'quit') { $('#gameMenu').hidden = true; if (await ask('Spiel verlassen und zum Hauptmenü?', 'Verlassen')) toMenu(); }
+    else if (a === 'stats') { $('#gameMenu').hidden = true; openStats(); }
+    else if (a === 'keys') { $('#gameMenu').hidden = true; showKeys(); }
+    else if (a === 'realms') { S.realms = !S.realms; store.set('kingdoms-realms', S.realms ? '1' : '0'); S.realmKey = ''; renderRealms(); renderGameMenu(); }
+    else if (a === 'quit') {
+      $('#gameMenu').hidden = true;
+      const st = S.state, running = st && !st.over;
+      const txt = !running ? 'Zum Hauptmenü?'
+        : S.role === 'guest' ? 'Spiel wirklich verlassen? Bis du zurückkommst, spielt die KI für dich. Über „🔌 Zurück in Raum“ im Hauptmenü kannst du wieder einsteigen.'
+          : S.role === 'host' ? '<b>Du bist Gastgeber:</b> Wenn du gehst, fliegen alle aus dem Spiel. Über „▶️ Spiel fortsetzen“ kannst du es später wieder öffnen.'
+            : 'Spiel verlassen? Über „▶️ Spiel fortsetzen“ geht es später weiter.';
+      if (await ask(txt, 'Verlassen')) toMenu();
+    }
   });
 
   // ---------- Neue Version? ----------
@@ -2197,10 +2530,15 @@
       const r = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' });
       if (!r.ok) return;
       const v = (await r.json()).v;
-      if (v && v !== APP_VERSION && !S.updDismissed) $('#updateBar').hidden = false;
+      // mitten im Online-Spiel nicht zum Neuladen auffordern – sonst passen die Versionen nicht mehr zusammen
+      const online = S.state && !S.state.over && (S.role === 'guest' || S.role === 'host');
+      if (v && v !== APP_VERSION && !S.updDismissed && !online) $('#updateBar').hidden = false;
     } catch { /* offline – egal */ }
   }
   $('#btnReload').onclick = () => location.reload();
+  window.addEventListener('beforeunload', e => {
+    if (S.state && !S.state.over && (S.role === 'guest' || S.role === 'host')) { e.preventDefault(); e.returnValue = ''; }
+  });
   $('#btnUpdLater').onclick = () => { S.updDismissed = true; $('#updateBar').hidden = true; };
   setInterval(checkVersion, 3 * 60 * 1000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) checkVersion(); });
