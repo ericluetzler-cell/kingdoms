@@ -786,3 +786,11 @@ kbd { display: inline-block; padding: .05rem .45rem; border-radius: 6px; border:
   .dock { width: min(1060px, calc(100% - 24px)); }
   .shop { grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); max-height: 168px; overflow-y: auto; padding-right: 2px; }
 }
+
+/* ===== v22: Reichsname, Minispiel ===== */
+.players .nm .realmname { display: block; font-weight: 600; font-size: .74rem; color: var(--gold-hi); opacity: .85; }
+.players li button[data-rename] { padding: .1em .4em; }
+.modal.minigame { max-width: 420px; }
+.minigame canvas { width: 100%; max-width: 380px; aspect-ratio: 360 / 260; border-radius: 12px; touch-action: none; cursor: crosshair; display: block; margin: .3rem auto; box-shadow: 0 6px 18px rgba(0, 0, 0, .4); }
+.minibar { display: flex; justify-content: space-between; align-items: center; gap: .5rem; flex-wrap: wrap; font-size: .85rem; }
+#bMini { white-space: nowrap; }

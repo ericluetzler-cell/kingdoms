@@ -647,7 +647,7 @@
     if (opts.names) for (const [k, v] of Object.entries(opts.names)) if (cells[+k] && v) cells[+k].name = String(v).slice(0, 24);
     const mode = MODES[opts.mode] ? opts.mode : 'classic';
     const players = defs.map((p, i) => ({
-      name: p.name, type: p.type, level: p.level || null, cid: p.cid || null,
+      name: p.name, realm: p.realm ? String(p.realm).trim().slice(0, 24) : '', type: p.type, level: p.level || null, cid: p.cid || null,
       color: COLORS.includes(p.color) ? p.color : COLORS[i], alive: true, gold: opts.gold != null ? +opts.gold : 4, sci: 2, food: 4, wood: 3, stone: 2, techs: [], lastAsk: -10, divNo: 0,
     }));
     for (const pl of players) pl.rec = newRec();
@@ -1052,6 +1052,13 @@
 
     // Diplomatie geht jederzeit
     switch (a.type) {
+      case 'realm': {
+        const nm = String(a.name || '').replace(/\s+/g, ' ').trim().slice(0, 24);
+        if (nm === (me.realm || '')) return { ok: true };
+        me.realm = nm;
+        log(st, nm ? `🏷️ {0} nennt das eigene Reich jetzt „${nm}“.` : '🏷️ {0} hat keinen Reichsnamen mehr.', p);
+        return { ok: true };
+      }
       case 'propose': {
         const t = a.target, tp = st.players[t], kind = a.kind === 'peace' ? 'peace' : 'alliance';
         if (!tp || !tp.alive || t === p) return fail('Ungültiges Ziel.');

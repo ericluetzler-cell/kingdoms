@@ -7,6 +7,7 @@
   const LEVELS = { easy: 'Leicht', medium: 'Mittel', hard: 'Schwer' };
   const BOT_NAMES = ['Graf Bruno', 'Lady Mira', 'König Otto', 'Baronin Ilse', 'Ritter Kunz', 'Herzogin Wanda', 'Fürst Egon', 'Gräfin Liv'];
   const ID_PREFIX = 'kingdoms-game-';
+  const BOT_REALMS = ['Eisenkrone', 'Sonnenthal', 'Rabenfels', 'Goldküste', 'Sturmwacht', 'Wolfsland', 'Silberau', 'Nebelmark'];
   const BLDG_ORDER = ['farm', 'lumber', 'quarry', 'granary', 'mine', 'harbor', 'library', 'market', 'temple', 'caravan', 'tower', 'barracks', 'fort'];
   const BUILD_CATS = { eco: ['farm', 'lumber', 'quarry', 'granary', 'mine', 'harbor', 'library', 'market', 'temple', 'caravan'], mil: ['tower', 'barracks', 'fort', 'walls'], tools: ['demolish'] };
   function bInfo(b) {
@@ -16,7 +17,7 @@
     return { ...B, icon: b === 'fort' ? '#castle' : '#b-' + b, where: B.coast ? 'an der Küste' : B.on.length >= 5 ? 'überall' : B.on.map(t => K.TERRAIN[t].name).join(', ') };
   }
   const newSeed = () => (Math.random() * 2 ** 32) >>> 0;
-  const APP_VERSION = '21';
+  const APP_VERSION = '22';
   // nur zum Testen: mit ?debug in der Adresse ist der Spielzustand in der Konsole erreichbar
   const DEBUG = new URLSearchParams(location.search).has('debug');
 
@@ -86,7 +87,9 @@
     const used = new Set(list.map(p => p.name));
     const name = BOT_NAMES.find(n => !used.has(n)) || 'Bot ' + (list.length + 1);
     const usedC = new Set(list.map(p => p.color));
-    return { name, type: 'ai', level, color: K.COLORS.find(c => !usedC.has(c)) };
+    const usedR = new Set(list.map(p => p.realm));
+    const realm = BOT_REALMS.find(r => !usedR.has(r)) || '';
+    return { name, realm, type: 'ai', level, color: K.COLORS.find(c => !usedC.has(c)) };
   }
 
   // ---------- Titelbildschirm ----------
@@ -97,7 +100,10 @@
   // ---------- Profil: eigenes Bild und Lieblingsfarbe ----------
 
   const PROFILE = { color: K.COLORS.includes(store.get('kingdoms-color')) ? store.get('kingdoms-color') : K.COLORS[0], avatar: store.get('kingdoms-avatar') || null };
-  const me0 = () => ({ name: myName(), type: 'human', cid: 'host', pid: PID, color: PROFILE.color, avatar: PROFILE.avatar });
+  const myRealm = () => ($('#realm').value || '').replace(/\s+/g, ' ').trim().slice(0, 24);
+  $('#realm').value = store.get('kingdoms-realm') || '';
+  $('#realm').addEventListener('change', () => store.set('kingdoms-realm', myRealm()));
+  const me0 = () => ({ name: myName(), realm: myRealm(), type: 'human', cid: 'host', pid: PID, color: PROFILE.color, avatar: PROFILE.avatar });
   // Profilbild oder – ohne Bild – der Anfangsbuchstabe in der Reichsfarbe
   const avatarHTML = (avatar, name, color, cls = '') => (avatar
     ? `<img class="ava ${cls}" src="${avatar}" alt="">`
@@ -284,6 +290,7 @@
 
   function resetSession() {
     clearTimeout(S.aiTimer);
+    { const mo = $('#mini'); if (mo) { mo.hidden = true; mo.innerHTML = ''; } }
     if (S.peer) { try { S.peer.destroy(); } catch { /* egal */ } }
     Object.assign(S, { role: null, me: 0, state: null, geo: null, lobby: [], code: '', peer: null, conns: new Map(), conn: null, seats: null, joinReqs: [], reqSeq: 0, seatTok: null, pin: -1, infoCell: -1,
       avatars: null, sel: -1, selPref: null, target: -1, mode: 'recruit', unit: 'w', bldg: 'lumber', amount: 1, turnKey: '',
@@ -560,7 +567,7 @@
     seg($('#lobbyBotLevel'), [['easy', 'Leicht'], ['medium', 'Mittel'], ['hard', 'Schwer']], S.botLevel || 'medium', v => { S.botLevel = v; renderLobby(); });
     $('#lobbyList').innerHTML = S.lobby.map((p, i) => `
       <li>${avatarHTML(p.avatar, p.name, p.color || K.COLORS[i], 'sm')}<span class="dot" style="background:${p.color || K.COLORS[i]}"></span>
-        <span class="grow">${esc(p.name)} ${p.cid === 'host' ? '<span class="tag">👑 Gastgeber</span>' : ''}
+        <span class="grow">${esc(p.name)}${p.realm ? ` <span class="tag">🏰 ${esc(p.realm)}</span>` : ''} ${p.cid === 'host' ? '<span class="tag">👑 Gastgeber</span>' : ''}
           ${p.type === 'ai' ? `<span class="tag">🤖 KI ${LEVELS[p.level]}</span>` : ''}</span>
         ${host && p.type === 'ai' ? `<button data-rm="${i}" title="Entfernen">✕</button>` : ''}
         ${host && p.type === 'human' && p.cid !== 'host' ? `<button data-kick="${esc(p.cid)}" class="kick" title="Aus dem Raum werfen">👢 Kicken</button>` : ''}
@@ -676,7 +683,7 @@
       const base = String(d.name || 'Gast').trim().slice(0, 16) || 'Gast';
       let nm = base, k = 2;
       while (S.lobby.some(x => x.name.toLowerCase() === nm.toLowerCase())) nm = `${base.slice(0, 13)} ${k++}`;
-      S.lobby.push({ name: nm, type: 'human', cid: conn.peer, pid: String(d.pid || '').slice(0, 20) || null, color, avatar: safeAvatar(d.avatar) });
+      S.lobby.push({ name: nm, realm: String(d.realm || '').replace(/\s+/g, ' ').trim().slice(0, 24), type: 'human', cid: conn.peer, pid: String(d.pid || '').slice(0, 20) || null, color, avatar: safeAvatar(d.avatar) });
       return lobbyChanged();
     }
     if (d.t === 'action' && S.state) {
@@ -803,7 +810,7 @@
       conn.on('open', () => {
         conn._ok = true;
         const lr = lastRoom();
-        conn.send({ t: 'join', name: myName(), v: APP_VERSION, pid: PID, tok: lr && lr.code === code ? lr.tok : null, color: PROFILE.color, avatar: PROFILE.avatar });
+        conn.send({ t: 'join', name: myName(), realm: myRealm(), v: APP_VERSION, pid: PID, tok: lr && lr.code === code ? lr.tok : null, color: PROFILE.color, avatar: PROFILE.avatar });
       });
       conn.on('data', onGuestData);
       conn.on('close', () => conn._onLost && conn._onLost());
@@ -1180,6 +1187,7 @@
       if (myTurn()) {
         Object.assign(S, { mode: st.players[S.me].gold >= 2 ? 'recruit' : 'army', sel: -1, selDivs: null, split: null });
         if (!(S.tut && st.round === 1)) { splash(`Dein Zug<small>Runde ${st.round}</small>`); Sound.play('turn'); }
+        if (Mini.isOpen()) { Mini.close(); toast('⚔️ Du bist dran! Das Minispiel wartet auf dich.'); }
         // Rundenbericht: was seit deinem letzten Zug passiert ist (Angriffe auf dich, Bündnisse, Vernichtungen)
         if (S.lastLogN != null) {
           const fresh = st.log.filter(l => l.n > S.lastLogN && (l.ps.includes(S.me) || /💀|🏆|👑/.test(l.m)));
@@ -1330,7 +1338,7 @@
   S.realms = store.get('kingdoms-realms') !== '0';
   function renderRealms() {
     const st = S.state, C = st.cells;
-    const key = S.realms + '|' + C.map(c => c.owner).join(',') + '|' + st.players.map(p => p.name).join(',');
+    const key = S.realms + '|' + C.map(c => c.owner).join(',') + '|' + st.players.map(p => p.realm || p.name).join(',');
     if (S.realmKey === key) return;
     S.realmKey = key;
     if (!S.realms) { $('#realms').innerHTML = ''; return; }
@@ -1355,7 +1363,7 @@
         const ux = Math.cos(ang), uy = Math.sin(ang);
         const proj = P.map(([x, y]) => (x - mx) * ux + (y - my) * uy);
         const len = Math.max(60, Math.max(...proj) - Math.min(...proj) + 50);
-        const name = pl.name.toUpperCase();
+        const name = (pl.realm || pl.name).toUpperCase();
         const fs = Math.max(9, Math.min(46, len / (name.length * 0.95)));
         html += `<text class="realm" x="${mx.toFixed(1)}" y="${my.toFixed(1)}" font-size="${fs.toFixed(1)}" fill="${pl.color}"
           transform="rotate(${(ang * 180 / Math.PI).toFixed(1)} ${mx.toFixed(1)} ${my.toFixed(1)})">${esc(name)}</text>`;
@@ -1729,7 +1737,7 @@
     }
     if (!mt) { status = `⏳ ${pName(st.turn)} ist am Zug – schau dich schon um und plane deinen nächsten Zug.`; right = ''; }
     bar.innerHTML = `${tabs}<span class="status">${status}</span>
-      <div class="right">${right}${mt && S.mode === 'army' ? (() => { const n = st.cells.filter(c => c.owner === S.me && readyDivs(c).length).length; return n ? `<button id="bNext" title="Nächste bereite Armee (Taste N)">⏭ ${n}</button>` : ''; })() : ''}${mt ? `<button id="bEnd" class="endturn ${S.mode === 'army' ? 'primary' : ''}" title="Leertaste">Zug beenden ➜</button>` : '<span class="tag waiting">⏳ warten…</span>'}</div>${shop}`;
+      <div class="right">${right}${mt && S.mode === 'army' ? (() => { const n = st.cells.filter(c => c.owner === S.me && readyDivs(c).length).length; return n ? `<button id="bNext" title="Nächste bereite Armee (Taste N)">⏭ ${n}</button>` : ''; })() : ''}${mt ? `<button id="bEnd" class="endturn ${S.mode === 'army' ? 'primary' : ''}" title="Leertaste">Zug beenden ➜</button>` : '<button id="bMini" title="Kleines Bogenschieß-Spiel, bis du dran bist">🎯 Minispiel</button>'}</div>${shop}`;
   }
 
   $('#actionbar').onclick = e => {
@@ -1765,6 +1773,7 @@
     else if (d.spno !== undefined) { S.split = null; renderBar(); }
     else if (d.spgo !== undefined) { const sp = S.split; S.split = null; act({ type: 'split', cell: S.sel, div: sp.div, units: sp.u }); }
     else if (t.id === 'bEnd') endTurn();
+    else if (t.id === 'bMini') Mini.open();
   };
 
   // springt zur nächsten Provinz mit bereiten Truppen, damit keine Armee vergessen wird
@@ -2019,7 +2028,8 @@
       const away = p.away ? ' <span class="tag" title="Verbindung verloren – die KI spielt, bis er zurückkommt">📡</span>' : '';
       return `<li class="${i === st.turn && !st.over ? 'cur' : ''} ${p.alive ? '' : 'dead'}" style="--pc:${p.color}">
         ${avatarHTML(S.avatars && S.avatars[i], p.name, p.color, 'sm')}
-        <span class="nm">${esc(p.name)}${i === S.me ? ' (Du)' : ''}${mark}${traitor}${away}</span>
+        <span class="nm">${esc(p.name)}${i === S.me ? ' (Du)' : ''}${mark}${traitor}${away}${p.realm ? `<small class="realmname">🏰 ${esc(p.realm)}</small>` : ''}</span>
+        ${i === S.me && p.alive && !st.over ? '<button data-rename class="ghost" title="Reich umbenennen">✏️</button>' : ''}
         ${kick}
         <span class="st">${st.mode === 'throne' ? `<b class="crowns">👑 ${st.crowns[i]}/${st.crownGoal}</b> · ` : ''}${p.type === 'ai' ? `🤖 ${LEVELS[p.level] || ''} · ` : ''}🏳️ ${s.cells} · ⚔️ ${s.troops} · 🔬 ${s.techs} · ${K.score(st, i)} Punkte</span>
         ${dip}
@@ -2048,6 +2058,117 @@
     }
     S.propKey = key;
   }
+
+  // ---------- Minispiel für die Wartezeit: Bogenschießen ----------
+  // 10 Pfeile, die Scheibe wandert, der Wind treibt die Pfeile ab. Pfeile fliegen eine Weile – man muss vorhalten.
+  const Mini = (() => {
+    const o = $('#mini');
+    let cv, g, raf = 0, st = null;
+    const W = 360, H = 260, BOW = [W / 2, H - 14];
+    const best = () => +(store.get('kingdoms-mini') || 0);
+    const isOpen = () => !o.hidden;
+    function open() {
+      o.innerHTML = `<div class="modal center minigame">
+        <div class="mhead"><h2>🎯 Bogenschießen</h2><button data-mclose class="ghost" title="Schließen">✕</button></div>
+        <p class="tag">Triff die wandernde Scheibe! Der Pfeil braucht etwas Zeit – halte vor. Achte auf den Wind.</p>
+        <canvas width="${W}" height="${H}"></canvas>
+        <div class="minibar"><span id="miniInfo"></span><button id="miniGo" class="primary">Neue Runde</button></div></div>`;
+      o.hidden = false;
+      cv = o.querySelector('canvas'); g = cv.getContext('2d');
+      cv.addEventListener('pointerdown', shoot);
+      reset();
+      cancelAnimationFrame(raf); raf = requestAnimationFrame(loop);
+    }
+    function close() { o.hidden = true; cancelAnimationFrame(raf); o.innerHTML = ''; st = null; }
+    function reset() {
+      st = { t: 0, arrows: 10, score: 0, flying: [], stuck: [], pops: [], wind: (Math.random() - 0.5) * 60, speed: 1, last: performance.now(), over: false };
+      info();
+    }
+    const target = t => {
+      const sp = st.speed;
+      return [W / 2 + Math.sin(t * 0.9 * sp) * (W / 2 - 50), 70 + Math.sin(t * 1.7 * sp + 1) * 34];
+    };
+    function info() {
+      const el = $('#miniInfo');
+      if (el) el.innerHTML = `🏹 ${st.arrows} Pfeile · <b>${st.score}</b> Punkte · Rekord ${Math.max(best(), st.score)} · Wind ${st.wind > 0 ? '→' : '←'} ${Math.abs(Math.round(st.wind / 10))}`;
+    }
+    function shoot(e) {
+      if (!st || st.arrows <= 0) return;
+      const r = cv.getBoundingClientRect();
+      const x = (e.clientX - r.left) * W / r.width, y = (e.clientY - r.top) * H / r.height;
+      st.arrows--;
+      st.flying.push({ x0: BOW[0], y0: BOW[1], x1: x, y1: y, t0: st.t, dur: 0.45 + Math.hypot(x - BOW[0], y - BOW[1]) / 900 });
+      Sound.play('volley');
+      info();
+    }
+    function loop(now) {
+      if (!st || o.hidden) return;
+      const dt = Math.min(0.05, (now - st.last) / 1000);
+      st.last = now; st.t += dt;
+      st.speed = 1 + (10 - st.arrows) * 0.08;
+      // Pfeile landen
+      for (const a of st.flying.slice()) {
+        if (st.t - a.t0 < a.dur) continue;
+        st.flying.splice(st.flying.indexOf(a), 1);
+        const lx = a.x1 + st.wind * a.dur * 0.6, ly = a.y1;
+        const [tx, ty] = target(st.t), d = Math.hypot(lx - tx, ly - ty);
+        const pts = d < 6 ? 10 : d < 13 ? 7 : d < 21 ? 5 : d < 30 ? 2 : 0;
+        st.score += pts;
+        if (pts) st.stuck.push({ dx: lx - tx, dy: ly - ty });
+        st.pops.push({ x: lx, y: ly, txt: pts ? `+${pts}` : 'daneben', t: st.t, good: pts >= 7 });
+        Sound.play(pts === 10 ? 'win' : pts ? 'click' : 'error');
+        info();
+      }
+      if (st.arrows <= 0 && !st.flying.length && !st.over) {
+        st.over = true;
+        const rec = st.score > best();
+        if (rec) store.set('kingdoms-mini', String(st.score));
+        st.pops.push({ x: W / 2, y: H / 2, txt: rec ? `🏆 Neuer Rekord: ${st.score}!` : `Fertig: ${st.score} Punkte`, t: st.t, good: true, big: true });
+        if (rec) Sound.play('victory');
+        info();
+      }
+      draw();
+      raf = requestAnimationFrame(loop);
+    }
+    function draw() {
+      g.clearRect(0, 0, W, H);
+      const sky = g.createLinearGradient(0, 0, 0, H);
+      sky.addColorStop(0, '#2b5876'); sky.addColorStop(0.65, '#6aa2b8'); sky.addColorStop(0.66, '#5d8a3a'); sky.addColorStop(1, '#3f6526');
+      g.fillStyle = sky; g.fillRect(0, 0, W, H);
+      // Windfahne
+      g.save(); g.translate(26, 30); g.strokeStyle = '#3a2a1a'; g.lineWidth = 2; g.beginPath(); g.moveTo(0, 0); g.lineTo(0, 30); g.stroke();
+      g.fillStyle = '#e5484d'; g.beginPath(); g.moveTo(0, 0); g.lineTo(st.wind / 2, 5); g.lineTo(0, 10); g.fill(); g.restore();
+      // Scheibe
+      const [tx, ty] = target(st.t);
+      [[30, '#f3ead2'], [21, '#e5484d'], [13, '#f3ead2'], [6, '#e8b64c']].forEach(([r, c]) => { g.fillStyle = c; g.beginPath(); g.arc(tx, ty, r, 0, 7); g.fill(); });
+      g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 1; g.beginPath(); g.arc(tx, ty, 30, 0, 7); g.stroke();
+      for (const s of st.stuck) { g.strokeStyle = '#4a2e14'; g.lineWidth = 2; g.beginPath(); g.moveTo(tx + s.dx, ty + s.dy); g.lineTo(tx + s.dx + 4, ty + s.dy + 9); g.stroke(); }
+      // fliegende Pfeile
+      for (const a of st.flying) {
+        const k = (st.t - a.t0) / a.dur, x = a.x0 + (a.x1 + st.wind * a.dur * 0.6 - a.x0) * k, y = a.y0 + (a.y1 - a.y0) * k - Math.sin(k * Math.PI) * 30;
+        const ang = Math.atan2(a.y1 - a.y0, a.x1 - a.x0);
+        g.save(); g.translate(x, y); g.rotate(ang);
+        g.strokeStyle = '#5a3d22'; g.lineWidth = 2; g.beginPath(); g.moveTo(-12, 0); g.lineTo(6, 0); g.stroke();
+        g.fillStyle = '#d6dbe0'; g.beginPath(); g.moveTo(9, 0); g.lineTo(4, -3); g.lineTo(4, 3); g.fill(); g.restore();
+      }
+      // Bogen
+      g.strokeStyle = '#7a4a24'; g.lineWidth = 4; g.beginPath(); g.arc(BOW[0], BOW[1] + 16, 26, Math.PI * 1.15, Math.PI * 1.85); g.stroke();
+      // Treffer-Anzeigen
+      st.pops = st.pops.filter(p => st.t - p.t < (p.big ? 99 : 1.2));
+      for (const p of st.pops) {
+        g.globalAlpha = p.big ? 1 : Math.max(0, 1 - (st.t - p.t) / 1.2);
+        g.font = `800 ${p.big ? 22 : 15}px Georgia, serif`; g.textAlign = 'center';
+        g.lineWidth = 4; g.strokeStyle = 'rgba(0,0,0,.6)'; g.strokeText(p.txt, p.x, p.y - (p.big ? 0 : (st.t - p.t) * 30));
+        g.fillStyle = p.good ? '#ffe2a0' : '#fff'; g.fillText(p.txt, p.x, p.y - (p.big ? 0 : (st.t - p.t) * 30));
+        g.globalAlpha = 1;
+      }
+    }
+    o.addEventListener('click', e => {
+      if (e.target === o || e.target.closest('[data-mclose]')) close();
+      else if (e.target.id === 'miniGo') reset();
+    });
+    return { open, close, isOpen };
+  })();
 
   // ---------- Statistik ----------
 
@@ -2143,6 +2264,25 @@
   }
   $('#btnMyStats').onclick = openAccStats;
 
+  function renameRealm() {
+    const st = S.state, me = st.players[S.me], o = $('#confirm');
+    o.innerHTML = `<div class="modal center"><h2>🏰 Dein Reich</h2><p class="tag">Wie soll dein Reich heißen? Der Name steht groß auf der Karte.</p>
+      <input id="realmIn" maxlength="24" value="${esc(me.realm || '')}" placeholder="z. B. Königreich Nordmark">
+      <div class="row"><button data-a="0">Abbrechen</button><button data-a="1" class="primary">Speichern</button></div></div>`;
+    o.hidden = false;
+    const inp = $('#realmIn');
+    inp.focus(); inp.select();
+    const done = ok => {
+      o.hidden = true;
+      if (!ok) return;
+      const nm = inp.value.replace(/\s+/g, ' ').trim().slice(0, 24);
+      act({ type: 'realm', name: nm });
+      $('#realm').value = nm; store.set('kingdoms-realm', nm);
+    };
+    inp.onkeydown = e => { if (e.key === 'Enter') done(true); };
+    o.onclick = e => { const b = e.target.closest('[data-a]'); if (b) done(b.dataset.a === '1'); else if (e.target === o) done(false); };
+  }
+
   function openGift(t) {
     const st = S.state, me = st.players[S.me], o = $('#confirm');
     const rows = [['gold', '<i class="coin"></i> Gold', me.gold], ...K.RKEYS.map(k => [k, `${K.RES[k].icon} ${K.RES[k].name}`, me[k] || 0])];
@@ -2169,6 +2309,7 @@
     if (!b) return;
     const d = b.dataset, st = S.state;
     if (d.kick) { const p = st.players.find(x => x.cid === d.kick); if (p && await ask(`${esc(p.name)} aus dem Spiel werfen? Die KI übernimmt das Reich.`, '👢 Kicken')) kickPlayer(d.kick); return; }
+    if (d.rename !== undefined) { renameRealm(); return; }
     if (d.offer) act({ type: 'propose', target: +d.to, kind: d.offer });
     else if (d.cancel && await ask(`Vertrag mit ${pName(+d.cancel)} kündigen? Er gilt noch bis zum Ende der nächsten Runde – danach dürft ihr euch angreifen.`, '📜 Kündigen')) act({ type: 'cancel', target: +d.cancel });
     else if (d.betray && await ask(`Vertrag mit ${pName(+d.betray)} <b>sofort</b> brechen? Das ist Verrat: Alle sehen es, und 8 Runden lang will niemand einen Vertrag mit dir.`, '🗡️ Verrat begehen')) act({ type: 'betray', target: +d.betray });

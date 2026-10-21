@@ -6,7 +6,7 @@
   <title>Kingdoms</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Alegreya+Sans:wght@400;500;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=21">
+  <link rel="stylesheet" href="style.css?v=22">
 </head>
 <body>
 
@@ -373,6 +373,9 @@
           <label class="field">Dein Name
             <input id="name" maxlength="16" placeholder="z. B. König Eric" autocomplete="nickname">
           </label>
+          <label class="field">Name deines Reiches
+            <input id="realm" maxlength="24" placeholder="z. B. Königreich Nordmark" autocomplete="off">
+          </label>
           <span class="olabel">Deine Farbe</span>
           <div class="swatches" id="myColors"></div>
         </div>
@@ -574,6 +577,7 @@
   <button id="btnUpdLater" class="ghost" title="Später">✕</button>
 </div>
 <div id="stats" class="overlay" hidden></div>
+<div id="mini" class="overlay" hidden></div>
 <div id="gameMenu" class="overlay" hidden>
   <div class="modal sheet">
     <div class="mhead"><h2>Menü</h2><button data-gm="close" class="ghost" title="Schließen">✕</button></div>
@@ -589,9 +593,9 @@
 </div>
 
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="audio.js?v=21"></script>
-<script src="game.js?v=21"></script>
-<script src="mapview.js?v=21"></script>
-<script src="app.js?v=21"></script>
+<script src="audio.js?v=22"></script>
+<script src="game.js?v=22"></script>
+<script src="mapview.js?v=22"></script>
+<script src="app.js?v=22"></script>
 </body>
 </html>
