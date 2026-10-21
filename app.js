@@ -17,7 +17,7 @@
     return { ...B, icon: b === 'fort' ? '#castle' : '#b-' + b, where: B.coast ? 'an der Küste' : B.on.length >= 5 ? 'überall' : B.on.map(t => K.TERRAIN[t].name).join(', ') };
   }
   const newSeed = () => (Math.random() * 2 ** 32) >>> 0;
-  const APP_VERSION = '23';
+  const APP_VERSION = '24';
   // nur zum Testen: mit ?debug in der Adresse ist der Spielzustand in der Konsole erreichbar
   const DEBUG = new URLSearchParams(location.search).has('debug');
 
@@ -164,6 +164,7 @@
     const go = b.dataset.go;
     if (go === 'tutorial') startTutorial();
     else if (go === 'help') openHelp();
+    else if (go === 'news') showNews(true);
     else menuPanel(go);
   });
 
@@ -2917,6 +2918,50 @@
     }
   });
 
+  // ---------- Was ist neu? ----------
+  // Nach jedem Update erscheint einmal ein Fenster mit den Neuigkeiten (neueste zuerst).
+  const CHANGELOG = [
+    { v: '24', title: 'Neuigkeiten-Fenster', items: [
+      '📰 Nach jedem Update siehst du hier, was neu ist – und im Hauptmenü unter „Neuigkeiten“ jederzeit wieder.',
+    ] },
+    { v: '23', title: 'Drachenflug', items: [
+      '🐉 Neues Minispiel, wenn du nicht dran bist: Flieg einen Drachen in deiner Reichsfarbe, brenne Krähen, Türme, Ballons und feindliche Drachen nieder.',
+      '🔥 Power-ups (Dreifach-Feuer, Schild, Magnet, Extraleben), Kombos bis ×5 und ein Rekord zum Prahlen im Chat.',
+    ] },
+    { v: '22', title: 'Reichsnamen', items: [
+      '🏰 Gib deinem Reich einen eigenen Namen – im Hauptmenü oder im Spiel mit ✏️. Er steht groß auf der Karte.',
+    ] },
+    { v: '21', title: 'Großes Update', items: [
+      '🔌 Wiederbeitreten ist jetzt sicher: Nur du kommst zurück in dein Reich, Fremde muss der Gastgeber hereinlassen.',
+      '❄️ Schnee im Norden, die Karte „Nordland“ und 🪱 Sandwürmer in der Wüste.',
+      '⛵ Seefahrt mit Häfen, Durchmarsch bei Verbündeten und 🚩 Marschbefehle über mehrere Runden.',
+      '📊 Statistikfenster (Taste T), eigene Statistik im Menü, neue Tastenkürzel (S teilt Divisionen).',
+      '🔨 Baumenü immer sichtbar – direkt im Infofeld einer Provinz bauen. 🔬 Forschung hat einen eigenen Reiter.',
+    ] },
+    { v: '20', title: 'Diplomatie', items: [
+      '🕊️ Frieden und 🤝 Bündnisse (mit Handel), Kündigen, 🗡️ Verrat, 🎁 Geschenke – und ein gemeinsamer Sieg für Verbündete.',
+    ] },
+    { v: '19', title: 'Rohstoffe', items: [
+      '🌾 Nahrung, 🪵 Holz und 🪨 Stein – für Einheiten und Gebäude. Truppenlimit rund 20 pro Provinz. ▶️ Spiele fortsetzen.',
+    ] },
+  ];
+  function showNews(force) {
+    const seen = store.get('kingdoms-seen');
+    store.set('kingdoms-seen', APP_VERSION);
+    if (!force && seen === APP_VERSION) return;
+    if (!force && !$('#game').hidden) return;
+    // Neulinge sehen nur das neueste Update, Rückkehrer alles, was sie verpasst haben (höchstens 4)
+    const list = force ? CHANGELOG.slice(0, 6) : seen ? CHANGELOG.filter(c => +c.v > +seen).slice(0, 4) : CHANGELOG.slice(0, 1);
+    if (!list.length) return;
+    const o = $('#confirm');
+    o.innerHTML = `<div class="modal news"><div class="mhead"><h2>📰 Was ist neu?</h2><button data-a="1" class="ghost" title="Schließen">✕</button></div>
+      ${list.map((c, k) => `<section class="${k ? 'old' : ''}"><h3>${k ? '' : '<span class="newtag">NEU</span> '}Version ${c.v} · ${esc(c.title)}</h3>
+        <ul>${c.items.map(t => `<li>${t}</li>`).join('')}</ul></section>`).join('')}
+      <div class="row end"><button data-a="1" class="primary">Los geht's!</button></div></div>`;
+    o.hidden = false;
+    o.onclick = e => { if (e.target === o || e.target.closest('[data-a]')) o.hidden = true; };
+  }
+
   // ---------- Neue Version? ----------
   // version.json liegt neben der Seite; ändert sie sich nach einem Update, bekommt jeder Spieler einen Hinweis.
   async function checkVersion() {
@@ -2938,4 +2983,5 @@
   document.addEventListener('visibilitychange', () => { if (!document.hidden) checkVersion(); });
   setTimeout(checkVersion, 4000);
   renderResume();
+  setTimeout(() => showNews(false), 600);
 })();
