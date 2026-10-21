@@ -617,7 +617,7 @@
     }));
     const st = {
       cells, geo, players, turn: 0, round: 1, attacks: 0, divSeq: 0,
-      alliances: [], proposals: [], log: [], over: false, winner: -1, battle: null, march: null, seq: 0,
+      pacts: {}, proposals: [], log: [], over: false, winner: -1, battle: null, march: null, seq: 0,
       maxRounds: opts.rounds ? +opts.rounds : mode === 'blitz' ? 20 : MAX_ROUNDS, map: geo.type, truce: opts.truce || 0,
       mode, worldName: opts.worldName || '', throne: -1, crowns: players.map(() => 0), crownGoal: 5,
     };
@@ -726,6 +726,8 @@
       gold += y.gold; sci += y.sci;
       for (const k of RKEYS) r[k] += y[k];
     }
+    const ab = cells ? allyBonus(st, p) : 0;
+    gold += ab; sci += ab;
     return cells ? { gold, sci, ...r, upkeep: upkeepFor(troops), feed: upkeepFor(troops) } : { gold: 0, sci: 0, food: 0, wood: 0, stone: 0, upkeep: 0, feed: 0 };
   }
 
@@ -738,7 +740,13 @@
   }
 
   const score = (st, p) => { const s = stats(st, p); return s.cells * 3 + s.techs * 2 + s.buildings; };
-  const allied = (st, a, b) => a >= 0 && b >= 0 && a !== b && st.alliances.includes(akey(a, b));
+  // Verträge zwischen zwei Reichen: 'peace' (Nichtangriffspakt) oder 'alliance' (Bündnis mit Handel und gemeinsamem Sieg)
+  const pactOf = (st, a, b) => (a >= 0 && b >= 0 && a !== b && st.pacts && st.pacts[akey(a, b)]) || null;
+  // allied = darf nicht angreifen (Frieden oder Bündnis)
+  const allied = (st, a, b) => !!pactOf(st, a, b);
+  const isAlly = (st, a, b) => { const x = pactOf(st, a, b); return !!x && x.kind === 'alliance'; };
+  const PACTS = { peace: { name: 'Frieden', icon: '🕊️' }, alliance: { name: 'Bündnis', icon: '🤝' } };
+  const allyBonus = (st, p) => st.players.reduce((n, x, i) => n + (x.alive && isAlly(st, p, i) ? 1 : 0), 0);
   const aliveCount = st => st.players.filter(p => p.alive).length;
   const isCity = c => c.capital || c.building === 'fort';
   const canRecruit = c => isCity(c) || c.building === 'barracks';
@@ -749,7 +757,18 @@
   // Einheiten, die in diesem Zug noch handeln können
   const avail = c => { const r = emptyU(); for (const t of TYPES) r[t] = Math.max(0, c.u[t] - (c.done ? c.done[t] : 0)); return r; };
 
+  function expirePacts(st) {
+    for (const [k, x] of Object.entries(st.pacts || {})) {
+      if (x.ends == null || st.round <= x.ends) continue;
+      delete st.pacts[k];
+      const [a, b] = k.split('-').map(Number);
+      log(st, `📜 Der Vertrag (${PACTS[x.kind].name}) zwischen {0} und {1} ist ausgelaufen.`, a, b);
+    }
+    st.proposals = st.proposals.filter(x => (x.round || 0) >= st.round - 1);
+  }
+
   function startTurn(st) {
+    expirePacts(st);
     const pl = st.players[st.turn], inc = income(st, st.turn);
     // wie bei Civilization: die schwere KI bekommt einen Ressourcenbonus
     const bonus = (pl.type === 'ai' && pl.level === 'hard' ? 1.2 : 1) * (st.mode === 'blitz' ? 2 : 1);
@@ -788,7 +807,9 @@
         if (s > bestScore) { bestScore = s; best = i; }
       });
       st.over = true; st.winner = best;
-      log(st, 'Rundenlimit erreicht – {0} hat die meisten Punkte (Provinzen, Forschung, Gebäude)!', best);
+      // Verbündete des Punktbesten siegen mit
+      st.winners = st.mode === 'throne' ? [best] : st.players.map((x, i) => i).filter(i => i === best || (st.players[i].alive && isAlly(st, best, i)));
+      log(st, 'Rundenlimit erreicht – {0} hat die meisten Punkte (Provinzen, Forschung, Gebäude)!' + (st.winners.length > 1 ? ' Die Verbündeten siegen mit.' : ''), best);
       return;
     }
     startTurn(st);
@@ -842,13 +863,19 @@
   function checkEliminated(st, p) {
     if (p < 0 || !st.players[p].alive || stats(st, p).cells > 0) return;
     st.players[p].alive = false;
-    st.alliances = st.alliances.filter(k => !k.split('-').map(Number).includes(p));
+    for (const k of Object.keys(st.pacts || {})) if (k.split('-').map(Number).includes(p)) delete st.pacts[k];
     st.proposals = st.proposals.filter(x => x.from !== p && x.to !== p);
     log(st, '💀 {0} wurde vernichtet!', p);
-    if (aliveCount(st) === 1) {
+    const alive = st.players.map((x, i) => (x.alive ? i : -1)).filter(i => i >= 0);
+    if (alive.length === 1) {
       st.over = true;
-      st.winner = st.players.findIndex(x => x.alive);
+      st.winner = alive[0]; st.winners = [alive[0]];
       log(st, '🏆 {0} herrscht über das ganze Land!', st.winner);
+    } else if (st.mode !== 'throne' && alive.every(a => alive.every(b => a === b || isAlly(st, a, b)))) {
+      st.over = true;
+      st.winners = alive;
+      st.winner = alive.reduce((a, b) => (score(st, b) > score(st, a) ? b : a));
+      log(st, `🏆 Das Bündnis aus ${alive.map((_, i) => `{${i}}`).join(', ')} herrscht gemeinsam über das Land!`, ...alive);
     }
   }
 
@@ -919,29 +946,57 @@
     // Diplomatie geht jederzeit
     switch (a.type) {
       case 'propose': {
-        const t = a.target, tp = st.players[t];
+        const t = a.target, tp = st.players[t], kind = a.kind === 'peace' ? 'peace' : 'alliance';
         if (!tp || !tp.alive || t === p) return fail('Ungültiges Ziel.');
-        if (allied(st, p, t)) return fail('Ihr seid schon verbündet.');
+        const cur = pactOf(st, p, t);
+        if (cur && cur.ends == null && (cur.kind === 'alliance' || kind === 'peace')) return fail(cur.kind === 'alliance' ? 'Ihr seid schon verbündet.' : 'Ihr habt schon Frieden.');
         if (st.proposals.some(x => (x.from === p && x.to === t) || (x.from === t && x.to === p))) return fail('Es gibt schon ein offenes Angebot.');
-        st.proposals.push({ from: p, to: t });
-        log(st, '📜 {0} bietet {1} ein Bündnis an.', p, t);
+        st.proposals.push({ from: p, to: t, kind, round: st.round });
+        log(st, kind === 'peace' ? '🕊️ {0} bietet {1} Frieden an.' : '📜 {0} bietet {1} ein Bündnis an.', p, t);
         return { ok: true };
       }
       case 'accept':
       case 'decline': {
         const i = st.proposals.findIndex(x => x.from === a.from && x.to === p);
         if (i < 0) return fail('Kein Angebot vorhanden.');
+        const pr = st.proposals[i], kind = pr.kind || 'alliance';
         st.proposals.splice(i, 1);
         if (a.type === 'accept') {
-          st.alliances.push(akey(p, a.from));
-          log(st, '🤝 {0} und {1} sind jetzt verbündet.', p, a.from);
-        } else log(st, '✋ {0} lehnt das Bündnis mit {1} ab.', p, a.from);
+          if (!st.players[a.from].alive) return fail('Dieses Reich gibt es nicht mehr.');
+          st.pacts[akey(p, a.from)] = { kind, since: st.round, ends: null };
+          log(st, kind === 'peace' ? '🕊️ {0} und {1} schließen Frieden.' : '🤝 {0} und {1} sind jetzt verbündet.', p, a.from);
+        } else log(st, `✋ {0} lehnt ${kind === 'peace' ? 'den Frieden' : 'das Bündnis'} mit {1} ab.`, p, a.from);
         return { ok: true };
       }
-      case 'break': {
-        if (!allied(st, p, a.target)) return fail('Ihr seid nicht verbündet.');
-        st.alliances = st.alliances.filter(k => k !== akey(p, a.target));
-        log(st, '🗡️ {0} bricht das Bündnis mit {1}!', p, a.target);
+      case 'cancel': {
+        const x = pactOf(st, p, a.target);
+        if (!x) return fail('Ihr habt keinen Vertrag.');
+        if (x.ends != null) return fail('Der Vertrag ist schon gekündigt.');
+        x.ends = st.round + 1;
+        log(st, `📜 {0} kündigt ${x.kind === 'peace' ? 'den Frieden' : 'das Bündnis'} mit {1} – er gilt noch bis Ende Runde ${x.ends}.`, p, a.target);
+        return { ok: true };
+      }
+      case 'break':
+      case 'betray': {
+        const x = pactOf(st, p, a.target);
+        if (!x) return fail('Ihr habt keinen Vertrag.');
+        delete st.pacts[akey(p, a.target)];
+        me.traitor = st.round + 8;
+        log(st, `🗡️ Verrat! {0} bricht ${x.kind === 'peace' ? 'den Frieden' : 'das Bündnis'} mit {1}. Niemand wird {0} so bald trauen.`, p, a.target);
+        return { ok: true };
+      }
+      case 'gift': {
+        const t = a.target, tp = st.players[t];
+        if (!tp || !tp.alive || t === p) return fail('Ungültiges Ziel.');
+        const g = { gold: Math.max(0, a.gold | 0) };
+        for (const k of RKEYS) g[k] = Math.max(0, a[k] | 0);
+        const sum = g.gold + RKEYS.reduce((n, k) => n + g[k], 0);
+        if (!sum) return fail('Wähle etwas zum Verschenken.');
+        if (g.gold > me.gold || RKEYS.some(k => g[k] > (me[k] || 0))) return fail('So viel hast du nicht.');
+        me.gold -= g.gold; tp.gold += g.gold;
+        for (const k of RKEYS) { me[k] -= g[k]; tp[k] = (tp[k] || 0) + g[k]; }
+        const what = [g.gold ? `${g.gold} Gold` : '', ...RKEYS.filter(k => g[k]).map(k => `${g[k]} ${RES[k].name}`)].filter(Boolean).join(', ');
+        log(st, `🎁 {0} schenkt {1} ${what}.`, p, t);
         return { ok: true };
       }
     }
@@ -1185,20 +1240,36 @@
     counts.forEach((n, i) => { if (i !== p && st.players[i].alive && (leader < 0 || n > counts[leader])) leader = i; });
 
     // Diplomatie
-    if (lvl !== 'easy') {
-      for (const k of st.alliances) {
-        const [a, b] = k.split('-').map(Number);
-        if (a !== p && b !== p) continue;
-        const ally = a === p ? b : a;
-        if (aliveCount(st) === 2) return { type: 'break', target: ally };
-        if (lvl === 'hard' && counts[ally] > counts[p] * 1.6) return { type: 'break', target: ally };
+    const aliveIds = st.players.map((x, i) => (x.alive ? i : -1)).filter(i => i >= 0);
+    const borders = i => C.some(c => c.owner === p && c.n.some(j => C[j].owner === i));
+    for (const [k, pc] of Object.entries(st.pacts || {})) {
+      const [a, b] = k.split('-').map(Number);
+      if ((a !== p && b !== p) || pc.ends != null) continue;
+      const o = a === p ? b : a;
+      // nur noch zwei Reiche: Frieden gibt es nicht ewig
+      if (aliveIds.length === 2 && pc.kind === 'peace') return { type: 'cancel', target: o };
+      if (lvl === 'easy') continue;
+      if (lvl === 'hard' && pc.kind === 'alliance' && counts[o] > counts[p] * 1.6) return { type: 'betray', target: o };
+      // der letzte Gegner ist fast besiegt: Bündnis kündigen und allein siegen
+      const rest = aliveIds.filter(i => i !== p && i !== o);
+      if (rest.length && rest.every(i => counts[i] <= 3) && counts[o] >= 5 && counts[p] >= counts[o]) return { type: 'cancel', target: o };
+    }
+    if (lvl !== 'easy' && st.round - me.lastAsk >= 4 && aliveIds.length >= 3) {
+      const free = i => i !== p && st.players[i].alive && !st.proposals.some(x => (x.from === p && x.to === i) || (x.from === i && x.to === p));
+      // Bündnis gegen den Stärksten
+      // eine KI hat höchstens einen Bündnispartner – sonst verbünden sich alle gegen den Menschen
+      if (leader >= 0 && counts[leader] > counts[p] * 1.3 && allyBonus(st, p) === 0) {
+        const cands = aliveIds.filter(i => free(i) && i !== leader && !isAlly(st, p, i) && !(st.players[i].traitor > st.round) && (st.players[i].type === 'human' || allyBonus(st, i) === 0));
+        if (cands.length) { me.lastAsk = st.round; return { type: 'propose', target: cands.reduce((a, b) => (counts[b] > counts[a] ? b : a)), kind: 'alliance' }; }
       }
-      if (aliveCount(st) >= 3 && st.round - me.lastAsk >= 4 && leader >= 0 && counts[leader] > counts[p] * 1.3) {
-        const cands = st.players.map((_, i) => i).filter(i => i !== p && i !== leader && st.players[i].alive &&
-          !allied(st, p, i) && !st.proposals.some(x => (x.from === p && x.to === i) || (x.from === i && x.to === p)));
-        me.lastAsk = st.round;
-        if (cands.length) return { type: 'propose', target: cands.reduce((a, b) => (counts[b] > counts[a] ? b : a)) };
-      }
+      // Frieden mit einem starken Nachbarn, um sich anderswo auszubreiten
+      const strong = aliveIds.filter(i => free(i) && !allied(st, p, i) && borders(i) && counts[i] > counts[p] * 1.2);
+      if (strong.length) { me.lastAsk = st.round; return { type: 'propose', target: strong[0], kind: 'peace' }; }
+    }
+    // Verbündete in Not bekommen Hilfe
+    if (lvl !== 'easy' && me.gold >= 20) {
+      const poor = aliveIds.find(i => isAlly(st, p, i) && st.players[i].gold < 4 && counts[i] < counts[p] && !(me.gaveAt >= st.round - 3));
+      if (poor !== undefined) { me.gaveAt = st.round; return { type: 'gift', target: poor, gold: Math.floor(me.gold / 4) }; }
     }
 
     // 1. Forschung
@@ -1354,18 +1425,27 @@
   }
 
   function aiRespond(st, p, from) {
-    const lvl = st.players[p].level || 'medium';
+    const lvl = st.players[p].level || 'medium', C = st.cells;
+    const pr = st.proposals.find(x => x.from === from && x.to === p), kind = (pr && pr.kind) || 'alliance';
+    if (st.players[from].traitor > st.round) return 'decline';
     if (aliveCount(st) <= 2) return 'decline';
     if (lvl === 'easy') return Math.random() < 0.5 ? 'accept' : 'decline';
     const counts = st.players.map((_, i) => stats(st, i).cells);
     let leader = -1;
     counts.forEach((n, i) => { if (st.players[i].alive && (leader < 0 || n > counts[leader])) leader = i; });
+    if (kind === 'peace') {
+      // wer deutlich stärker ist und an den Bittsteller grenzt, will lieber erobern
+      const borders = C.some(c => c.owner === p && c.n.some(j => C[j].owner === from));
+      if (borders && counts[p] > counts[from] * (lvl === 'hard' ? 1.25 : 1.6)) return 'decline';
+      return 'accept';
+    }
+    if (allyBonus(st, p) >= 1) return 'decline';
     if (lvl === 'medium') return from === leader && counts[from] > counts[p] * 1.3 ? 'decline' : 'accept';
     return counts[from] <= counts[p] * 1.1 || (leader !== from && leader !== p) ? 'accept' : 'decline';
   }
 
   global.K = {
-    AI_CFG, WALLS_COST, WALLS_NEED, RES, RKEYS, needOf, lack, maxAfford, divUnits, strongestType, capOf, roomIn, canRecruit, shootTargets, createGame, generateWorld, applyAction, aiAction, aiRespond, stats, income, provinceYield, score, allied, odds, total, avail,
+    AI_CFG, PACTS, pactOf, isAlly, allyBonus, WALLS_COST, WALLS_NEED, RES, RKEYS, needOf, lack, maxAfford, divUnits, strongestType, capOf, roomIn, canRecruit, shootTargets, createGame, generateWorld, applyAction, aiAction, aiRespond, stats, income, provinceYield, score, allied, odds, total, avail,
     moveTargets, mpOf, canBuild, canResearch, unitUnlocked, hasTech, isCity, defMult, hexNeighbor, hexXY, emptyU, addU, upkeepFor,
     COLORS, UNITS, TYPES, TERRAIN, PSIZE, BUILDINGS, TECHS, MAPS, SIZES, MODES, LAIRS,
   };

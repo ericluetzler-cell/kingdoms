@@ -16,7 +16,7 @@
     return { ...B, icon: b === 'fort' ? '#castle' : '#b-' + b, where: B.on.length === 4 ? 'überall' : B.on.map(t => K.TERRAIN[t].name).join(', ') };
   }
   const newSeed = () => (Math.random() * 2 ** 32) >>> 0;
-  const APP_VERSION = '19';
+  const APP_VERSION = '20';
   // nur zum Testen: mit ?debug in der Adresse ist der Spielzustand in der Konsole erreichbar
   const DEBUG = new URLSearchParams(location.search).has('debug');
 
@@ -871,6 +871,7 @@
     S.avatars = S.lobby.map(p => p.avatar || null);
     const st = S.state;
     for (const p of st.players) for (const k of K.RKEYS) if (p[k] == null) p[k] = 4;
+    if (!st.pacts) { st.pacts = {}; for (const k of st.alliances || []) st.pacts[k] = { kind: 'alliance', since: 1, ends: null }; }
     Object.assign(S, { seenBattle: st.battle ? st.battle.id : 0, seenMarch: st.march ? st.march.id : 0, seenVolley: st.volley ? st.volley.id : 0,
       seenCrown: st.crownEvent ? st.crownEvent.id : 0, seenDemo: st.demolish ? st.demolish.id : 0, lastLogN: st.logN || 0 });
     if (sv.role === 'host') {
@@ -942,7 +943,7 @@
   const readyDivs = c => c.divs.filter(v => !v.done);
   const strongest = u => [...K.TYPES].reverse().find(t => u[t] > 0) || 'w';
   const svgEl = () => $('#map');
-  const SND = { recruit: 'recruit', build: 'build', research: 'research', demolish: null, end: 'click', propose: 'click', accept: 'click', break: 'lose', split: 'select', merge: 'select' };
+  const SND = { recruit: 'recruit', build: 'build', research: 'research', demolish: null, end: 'click', propose: 'click', accept: 'click', break: 'lose', betray: 'lose', cancel: 'click', gift: 'recruit', decline: 'click', split: 'select', merge: 'select' };
 
   let view = { x: 0, y: 0, w: 100, h: 100 };
   const dockSide = () => { const d = $('#actionbar').getBoundingClientRect(); return d.width && d.width < window.innerWidth * 0.6 && d.top < window.innerHeight / 3; };
@@ -1437,7 +1438,8 @@
     const y = K.provinceYield(st, c);
     const L = c.lair && K.LAIRS[c.lair];
     const kind = L ? `${L.icon} ${L.name}` : c.capital ? '👑 Hauptstadt' : c.throne ? '👑 Thronstadt' : c.building ? K.BUILDINGS[c.building].name : c.hut ? '🛖 Dorf' : '';
-    const chips = [T.name, `${K.PSIZE[c.sz].name}e Provinz`, c.river ? '🏞️ Fluss' : '', kind, c.walls ? '🧱 Stadtmauern' : '', `🛡️ ×${K.defMult(c, false).toFixed(2).replace(/\.?0+$/, '')}`]
+    const px = c.owner >= 0 && c.owner !== S.me ? K.pactOf(st, S.me, c.owner) : null;
+    const chips = [px ? `${K.PACTS[px.kind].icon} ${K.PACTS[px.kind].name}` : '', T.name, `${K.PSIZE[c.sz].name}e Provinz`, c.river ? '🏞️ Fluss' : '', kind, c.walls ? '🧱 Stadtmauern' : '', `🛡️ ×${K.defMult(c, false).toFixed(2).replace(/\.?0+$/, '')}`]
       .filter(Boolean).map(t => `<span class="chip">${t}</span>`).join('');
     const mine = c.owner === S.me && st.turn === S.me;
     const divs = c.divs.map(v => `<div class="urow"><b class="dname">${esc(v.name)}</b><span class="chips">${unitChips(v.u)}</span>
@@ -1661,7 +1663,7 @@
       if (marchable().includes(i)) { const divs = [...S.selDivs]; S.selPref = [from]; S.selDivs = null; return act({ type: 'move', from, to: i, divs }); }
       if (attackable(i)) { openPlanner(i); return; }
       if (st.cells[from].n.includes(i)) {
-        if (K.allied(st, S.me, c.owner)) return toast('Ihr seid verbündet – brich zuerst das Bündnis.');
+        if (K.allied(st, S.me, c.owner)) { const x = K.pactOf(st, S.me, c.owner); return toast(`${K.PACTS[x.kind].icon} Ihr habt ${x.kind === 'peace' ? 'Frieden' : 'ein Bündnis'} – kündige zuerst den Vertrag (👑 Reiche).`); }
         if (truceProtected(i)) return toast(`Friedenszeit: Spieler können erst ab Runde ${st.truce + 1} angegriffen werden.`);
       }
       if (c.owner === S.me && dropped) return toast(`Zu weit – diese Truppen schaffen ${K.mpOf(st, S.me, selUnits())} Provinz(en) pro Zug.`);
@@ -1779,41 +1781,91 @@
   for (const id of ['btnSfx', 'mSfx']) $('#' + id).onclick = () => { Sound.toggleSfx(); renderSoundButtons(); Sound.play('click'); };
   renderSoundButtons();
 
+  // ---------- Diplomatie ----------
+
   function renderPlayers() {
-    const st = S.state;
-    const pending = (a, b) => st.proposals.some(x => x.from === a && x.to === b);
+    const st = S.state, me = st.players[S.me];
+    const pending = (a, b) => st.proposals.find(x => x.from === a && x.to === b);
+    const canDip = me && me.alive && !st.over && !S.tut;
     $('#players').innerHTML = st.players.map((p, i) => {
-      const s = K.stats(st, i);
-      let btn = '';
-      if (i !== S.me && p.alive && st.players[S.me] && st.players[S.me].alive && !st.over && !S.tut) {
-        if (K.allied(st, S.me, i)) btn = `<button data-break="${i}" title="Bündnis brechen">🗡️ Brechen</button>`;
-        else if (pending(S.me, i)) btn = '<span class="tag">angefragt…</span>';
-        else if (!pending(i, S.me)) btn = `<button data-ally="${i}" title="Bündnis anbieten">🤝 Bündnis</button>`;
+      const s = K.stats(st, i), x = K.pactOf(st, S.me, i);
+      let dip = '';
+      if (i !== S.me && p.alive && canDip) {
+        const out = pending(S.me, i), inc = pending(i, S.me);
+        const rel = x ? `<span class="rel ${x.kind}">${K.PACTS[x.kind].icon} ${K.PACTS[x.kind].name}${x.ends != null ? ` <small>bis Ende R. ${x.ends}</small>` : ''}</span>`
+          : '<span class="rel none">⚔️ kein Vertrag</span>';
+        const btns = [];
+        if (out) btns.push(`<span class="tag">${out.kind === 'peace' ? 'Frieden' : 'Bündnis'} angefragt…</span>`);
+        else if (inc) btns.push('<span class="tag">📜 Angebot oben</span>');
+        else {
+          if (!x || x.ends != null) btns.push(`<button data-offer="peace" data-to="${i}" title="Nichtangriffspakt: ihr könnt euch nicht angreifen">🕊️ Frieden</button>`);
+          if (!x || x.kind !== 'alliance' || x.ends != null) btns.push(`<button data-offer="alliance" data-to="${i}" title="Bündnis: kein Angriff, +1 Gold und +1 Wissen pro Runde für beide, gemeinsamer Sieg">🤝 Bündnis</button>`);
+        }
+        if (x && x.ends == null) btns.push(`<button data-cancel="${i}" title="Vertrag kündigen – gilt noch bis Ende der nächsten Runde">📜 Kündigen</button>`,
+          `<button data-betray="${i}" class="kick" title="Vertrag sofort brechen – Verrat!">🗡️</button>`);
+        btns.push(`<button data-gift="${i}" title="Gold oder Rohstoffe schenken">🎁</button>`);
+        dip = `<div class="dip">${rel}${btns.join('')}</div>`;
       }
-      if (S.role === 'host' && p.type === 'human' && p.cid && p.cid !== 'host') btn += `<button data-kick="${esc(p.cid)}" class="kick" title="Aus dem Spiel werfen (KI übernimmt)">👢</button>`;
-      const ally = i !== S.me && K.allied(st, S.me, i) ? ' 🤝' : '';
+      const kick = S.role === 'host' && p.type === 'human' && p.cid && p.cid !== 'host' ? `<button data-kick="${esc(p.cid)}" class="kick" title="Aus dem Spiel werfen (KI übernimmt)">👢</button>` : '';
+      const mark = i !== S.me && x ? ' ' + K.PACTS[x.kind].icon : '';
+      const traitor = p.traitor > st.round ? ' <span class="tag warn" title="Hat kürzlich einen Vertrag gebrochen">🗡️ Verräter</span>' : '';
+      const away = p.away ? ' <span class="tag" title="Verbindung verloren – die KI spielt, bis er zurückkommt">📡</span>' : '';
       return `<li class="${i === st.turn && !st.over ? 'cur' : ''} ${p.alive ? '' : 'dead'}" style="--pc:${p.color}">
         ${avatarHTML(S.avatars && S.avatars[i], p.name, p.color, 'sm')}
-        <span class="nm">${esc(p.name)}${i === S.me ? ' (Du)' : ''}${ally}</span>
-        ${btn}
-        <span class="st">${st.mode === 'throne' ? `<b class="crowns">👑 ${st.crowns[i]}/${st.crownGoal}</b> · ` : ''}${p.type === 'ai' ? `🤖 ${LEVELS[p.level]} · ` : ''}🏳️ ${s.cells} · ⚔️ ${s.troops} · 🔬 ${s.techs} · ${K.score(st, i)} Punkte</span>
+        <span class="nm">${esc(p.name)}${i === S.me ? ' (Du)' : ''}${mark}${traitor}${away}</span>
+        ${kick}
+        <span class="st">${st.mode === 'throne' ? `<b class="crowns">👑 ${st.crowns[i]}/${st.crownGoal}</b> · ` : ''}${p.type === 'ai' ? `🤖 ${LEVELS[p.level] || ''} · ` : ''}🏳️ ${s.cells} · ⚔️ ${s.troops} · 🔬 ${s.techs} · ${K.score(st, i)} Punkte</span>
+        ${dip}
       </li>`;
     }).join('');
 
     const incoming = st.over ? [] : st.proposals.filter(x => x.to === S.me);
     $('#proposals').innerHTML = incoming.map(x => `
-      <div class="proposal">📜 ${pName(x.from)} bietet dir ein Bündnis an.
+      <div class="proposal"><div>${x.kind === 'peace'
+        ? `🕊️ ${pName(x.from)} bietet dir <b>Frieden</b> an.<small class="tag">Ihr könnt euch nicht mehr angreifen – bis einer kündigt.</small>`
+        : `📜 ${pName(x.from)} bietet dir ein <b>Bündnis</b> an.<small class="tag">Kein Angriff, je +1 Gold und +1 Wissen pro Runde, und wenn nur noch Verbündete übrig sind, siegt ihr gemeinsam.</small>`}</div>
         <div class="row"><button data-acc="${x.from}" class="primary">Annehmen</button><button data-dec="${x.from}">Ablehnen</button></div>
       </div>`).join('');
+    // neue Angebote fallen auch auf, wenn die Seitenleiste zu ist (Handy)
+    $('#btnSide').classList.toggle('ready', incoming.length > 0);
+    const key = incoming.map(x => x.from + ':' + x.kind + ':' + x.round).join(',');
+    if (key && key !== S.propKey) {
+      const x = incoming[incoming.length - 1];
+      toast(`${x.kind === 'peace' ? '🕊️' : '📜'} ${st.players[x.from].name} bietet dir ${x.kind === 'peace' ? 'Frieden' : 'ein Bündnis'} an – siehe 👑 Reiche.`);
+    }
+    S.propKey = key;
+  }
+
+  function openGift(t) {
+    const st = S.state, me = st.players[S.me], o = $('#confirm');
+    const rows = [['gold', '<i class="coin"></i> Gold', me.gold], ...K.RKEYS.map(k => [k, `${K.RES[k].icon} ${K.RES[k].name}`, me[k] || 0])];
+    o.innerHTML = `<div class="modal center gift"><h2>🎁 Geschenk an ${pName(t)}</h2>
+      <p class="tag">Hilf Verbündeten – oder kauf dir Frieden.</p>
+      <div class="giftrows">${rows.map(([k, l, max]) => `<label class="grow-row"><span>${l}</span>
+        <input type="number" min="0" max="${max}" value="0" data-g="${k}" inputmode="numeric"><small class="tag">von ${max}</small></label>`).join('')}</div>
+      <div class="row"><button data-a="0">Abbrechen</button><button data-a="1" class="primary">🎁 Schenken</button></div></div>`;
+    o.hidden = false;
+    o.onclick = e => {
+      const b = e.target.closest('[data-a]');
+      if (!b && e.target !== o) return;
+      if (b && b.dataset.a === '1') {
+        const a = { type: 'gift', target: t };
+        o.querySelectorAll('[data-g]').forEach(inp => { a[inp.dataset.g] = Math.max(0, Math.min(+inp.max, Math.floor(+inp.value || 0))); });
+        act(a);
+      }
+      o.hidden = true;
+    };
   }
 
   $('#side').addEventListener('click', async e => {
     const b = e.target.closest('button');
     if (!b) return;
-    const d = b.dataset;
-    if (d.kick) { const p = S.state.players.find(x => x.cid === d.kick); if (p && await ask(`${esc(p.name)} aus dem Spiel werfen? Die KI übernimmt das Reich.`, '👢 Kicken')) kickPlayer(d.kick); return; }
-    if (d.ally) act({ type: 'propose', target: +d.ally });
-    else if (d.break && await ask('Bündnis wirklich brechen? Alle sehen deinen Verrat!', '🗡️ Brechen')) act({ type: 'break', target: +d.break });
+    const d = b.dataset, st = S.state;
+    if (d.kick) { const p = st.players.find(x => x.cid === d.kick); if (p && await ask(`${esc(p.name)} aus dem Spiel werfen? Die KI übernimmt das Reich.`, '👢 Kicken')) kickPlayer(d.kick); return; }
+    if (d.offer) act({ type: 'propose', target: +d.to, kind: d.offer });
+    else if (d.cancel && await ask(`Vertrag mit ${pName(+d.cancel)} kündigen? Er gilt noch bis zum Ende der nächsten Runde – danach dürft ihr euch angreifen.`, '📜 Kündigen')) act({ type: 'cancel', target: +d.cancel });
+    else if (d.betray && await ask(`Vertrag mit ${pName(+d.betray)} <b>sofort</b> brechen? Das ist Verrat: Alle sehen es, und 8 Runden lang will niemand einen Vertrag mit dir.`, '🗡️ Verrat begehen')) act({ type: 'betray', target: +d.betray });
+    else if (d.gift) openGift(+d.gift);
     else if (d.acc) act({ type: 'accept', from: +d.acc });
     else if (d.dec) act({ type: 'decline', from: +d.dec });
     else if (d.e) sendChat(d.e);
@@ -1947,8 +1999,17 @@
         Tippe in der Vorschau auf eine Provinz, um sie umzubenennen. Gespeicherte Welten findest du bei „Welt“ im Einzelspieler und in deinem Online-Raum.</p>
       <h3>Online-Räume</h3>
       <p>Der Gastgeber wählt Welt und Modus, kann KI-Herrscher hinzufügen und Spieler mit <b>👢 Kicken</b> entfernen (sie können danach wieder beitreten) – in der Lobby und im laufenden Spiel (dann übernimmt die KI das Reich).</p>
-      <h3>Bündnisse</h3>
-      <p>Verbündete können sich nicht angreifen – bis einer das Bündnis bricht. Alle sehen den Verrat. 🗡️</p>
+      <h3>Diplomatie</h3>
+      <p>Unter <b>👑 Reiche</b> schließt du Verträge mit anderen Herrschern:</p>
+      <ul>
+        <li><b>🕊️ Frieden</b> – ein Nichtangriffspakt: Ihr könnt euch nicht angreifen.</li>
+        <li><b>🤝 Bündnis</b> – kein Angriff, dazu Handel und Wissensaustausch: <b>+1 Gold und +1 Wissen pro Runde</b> für jeden Verbündeten.
+          Sind nur noch Verbündete übrig, <b>siegt ihr gemeinsam</b>. Beim Rundenlimit siegen die Verbündeten des Punktbesten mit.</li>
+        <li><b>📜 Kündigen</b> – der Vertrag gilt noch bis zum Ende der nächsten Runde. Fair und ohne Folgen.</li>
+        <li><b>🗡️ Verrat</b> – der Vertrag endet sofort und du kannst angreifen. Aber alle sehen es: 8 Runden lang bist du <b>Verräter</b>, und die KI schließt keine Verträge mit dir.</li>
+        <li><b>🎁 Schenken</b> – Gold oder Rohstoffe an ein anderes Reich schicken, zum Beispiel an einen bedrängten Verbündeten.</li>
+      </ul>
+      <p>Angebote verfallen nach einer Runde. Im Thronkampf gibt es keinen gemeinsamen Sieg – die Krone trägt nur einer.</p>
     </div>`;
     $('#help').hidden = false;
   }
@@ -2081,7 +2142,8 @@
     if (!st.over) { o.hidden = true; S.overShown = false; return; }
     if (S.overShown) return;
     S.overShown = true;
-    const won = st.winner === S.me;
+    const winners = st.winners && st.winners.length ? st.winners : [st.winner];
+    const won = winners.includes(S.me), shared = winners.length > 1;
     const canRestart = S.role !== 'guest';
     const ranking = st.players.map((p, i) => ({ i, s: K.score(st, i) })).sort((a, b) => b.s - a.s)
       .map(r => `<li>${pName(r.i)} <span class="tag">${r.s} Punkte</span></li>`).join('');
@@ -2089,8 +2151,8 @@
       Sound.play(won ? 'victory' : 'defeat');
       o.innerHTML = `<div class="modal center victory">
         ${S.avatars && S.avatars[st.winner] ? avatarHTML(S.avatars[st.winner], st.players[st.winner].name, st.players[st.winner].color, 'win') : '<svg class="crest" style="width:64px;height:72px"><use href="#crest"/></svg>'}
-        <h1>${won ? 'Sieg!' : 'Spielende'}</h1>
-        <p>${pName(st.winner)} ${won ? '– du –' : ''} herrscht über das Land!</p>
+        <h1>${won ? (shared ? 'Gemeinsamer Sieg!' : 'Sieg!') : 'Spielende'}</h1>
+        <p>${shared ? `🤝 Das Bündnis aus ${winners.map(pName).join(' und ')} herrscht gemeinsam über das Land!` : `${pName(st.winner)} ${won ? '– du –' : ''} herrscht über das Land!`}</p>
         <ol class="ranking">${ranking}</ol>
         <div class="row">
           <button id="oMenu">Hauptmenü</button>

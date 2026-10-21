@@ -702,3 +702,20 @@ button { -webkit-tap-highlight-color: transparent; }
   .res small { display: none !important; }
 }
 .res > span { white-space: nowrap; display: inline-flex; align-items: baseline; }
+
+/* ===== Diplomatie (v20) ===== */
+.players .dip { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; margin-top: .2rem; }
+.players .dip button { font-size: .76rem; padding: .2em .55em; }
+.rel { font-size: .76rem; font-weight: 800; border-radius: 99px; padding: .1rem .55rem; margin-right: auto; }
+.rel small { font-weight: 600; opacity: .8; }
+.rel.none { color: var(--muted); background: rgba(255, 255, 255, .05); }
+.rel.peace { color: #bfe3ff; background: rgba(120, 180, 255, .14); }
+.rel.alliance { color: #c8f5c8; background: rgba(74, 222, 128, .14); }
+.proposal small { display: block; margin-top: .2rem; }
+.modal.gift { max-width: 360px; }
+.giftrows { display: flex; flex-direction: column; gap: .4rem; margin: .4rem 0 .8rem; }
+.grow-row { display: grid; grid-template-columns: 1fr 90px auto; align-items: center; gap: .5rem; }
+.grow-row span { display: inline-flex; align-items: center; gap: .35rem; font-weight: 700; }
+.grow-row input { padding: .35em .5em; text-align: right; }
+#btnSide.ready { box-shadow: 0 0 0 2px var(--gold-hi), 0 0 14px rgba(232, 182, 76, .6); animation: pulse 1.4s ease-in-out infinite; }
+#confirm { z-index: 25; }
