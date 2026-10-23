@@ -853,3 +853,15 @@ kbd { display: inline-block; padding: .05rem .45rem; border-radius: 6px; border:
 /* ===== v27: Forschung blinkt nicht mehr – nur ruhig hervorgehoben ===== */
 .hbtn.ready, .dock .tabs button.restab.ready { animation: none; }
 #btnResearch.ready { border-color: var(--gold); box-shadow: none; }
+
+/* ===== v28: Verbindungsanzeige ===== */
+.netbar { position: fixed; top: max(10px, env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); z-index: 40; display: flex; align-items: center; gap: .6rem;
+  background: var(--panel-solid); border: 1px solid #8fd0ff; border-radius: 12px; padding: .5rem .6rem .5rem 1rem; box-shadow: 0 10px 30px rgba(0, 0, 0, .5);
+  max-width: calc(100% - 24px); flex-wrap: wrap; justify-content: center; font-weight: 700; animation: drop .3s ease-out; }
+.netbar[hidden] { display: none; }
+.netbar small { font-weight: 400; color: var(--muted); }
+
+/* ===== v28: Ritterlauf ===== */
+.modal.minigame.runner { max-width: 520px; }
+.rnwrap { width: 100%; display: flex; justify-content: center; }
+.rnwrap canvas { display: block; border-radius: 12px; touch-action: none; cursor: pointer; box-shadow: 0 8px 24px rgba(0, 0, 0, .5); user-select: none; -webkit-user-select: none; }
