@@ -17,7 +17,7 @@
     return { ...B, icon: b === 'fort' ? '#castle' : '#b-' + b, where: B.coast ? 'an der Küste' : B.on.length >= 5 ? 'überall' : B.on.map(t => K.TERRAIN[t].name).join(', ') };
   }
   const newSeed = () => (Math.random() * 2 ** 32) >>> 0;
-  const APP_VERSION = '28';
+  const APP_VERSION = '29';
   const NET_V = 3;
   // nur zum Testen: mit ?debug in der Adresse ist der Spielzustand in der Konsole erreichbar
   const DEBUG = new URLSearchParams(location.search).has('debug');
@@ -3081,6 +3081,10 @@
   // ---------- Was ist neu? ----------
   // Nach jedem Update erscheint einmal ein Fenster mit den Neuigkeiten (neueste zuerst).
   const CHANGELOG = [
+    { v: '29', title: 'Neue Grafiken', items: [
+      '🎨 Alle Gebäude sind neu gezeichnet: Bauernhof mit Silo, Sägewerk mit Kreissäge, Mine mit Lore voller Gold, Markt mit Ständen, Tempel mit Säulen, Hafen mit Schiff und mehr.',
+      '⚔️ Neue Figuren für alle Einheiten: Krieger mit Schild, Bogenschützen mit Köcher, Speerkämpfer, Ritter und Schwere Reiterei auf Pferden, Katapult und Tribok.',
+    ] },
     { v: '28', title: 'Wiederbeitreten neu gebaut & Ritterlauf', items: [
       '🔌 Bricht die Verbindung ab (Handy gesperrt, WLAN weg), verbindet sich das Spiel jetzt automatisch neu – du bleibst im Spiel und musst nichts tun.',
       '📡 Der Raum des Gastgebers bleibt erreichbar, auch wenn sein Handy kurz schläft. Nach dem Neuladen behält er immer denselben Raum-Code.',
