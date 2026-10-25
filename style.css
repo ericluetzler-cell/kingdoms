@@ -1004,3 +1004,55 @@ kbd { display: inline-block; padding: .05rem .45rem; border-radius: 6px; border:
   .dock { padding-top: calc(48px + env(safe-area-inset-top, 0px)); }
   .toast { bottom: auto; top: calc(54px + env(safe-area-inset-top, 0px)); }
 }
+
+/* ===== v34: Provinz-Menü statt Modi ===== */
+.dock { display: flex; flex-direction: column; gap: .45rem; align-items: stretch; }
+.dock .barhead { display: flex; align-items: center; gap: .55rem; min-width: 0; }
+.dock .barhead .status { flex: 1; min-width: 0; }
+.dock .barhead .right { flex: none; }
+.dock .right .restab { position: relative; color: #cfe3ff; }
+.dock .right .restab.ready { border-color: var(--gold); color: var(--gold-hi); }
+.dock .right .restab .badge { margin-left: .2rem; }
+.dock .barbody { min-width: 0; max-height: 300px; overflow-y: auto; overscroll-behavior: contain; }
+.ppanel { display: flex; flex-direction: column; gap: .5rem; }
+.pp-head { display: flex; align-items: center; gap: .6rem; padding-bottom: .4rem; border-bottom: 1px solid var(--line-soft); }
+.pp-title { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; flex: 1; }
+.pp-title b { font-family: var(--display); font-size: 1.08rem; color: var(--gold-hi); }
+.pp-title small { color: var(--muted); font-size: .8rem; }
+.pp-yield { display: inline-flex; gap: .45rem; flex-wrap: wrap; justify-content: flex-end; font-size: .85rem; font-weight: 700; }
+.pp-close { flex: none; padding: .2em .55em; }
+.ahead .pp-close { order: -1; }
+.pp-body { display: flex; flex-direction: column; gap: .55rem; }
+.pp-sec { display: flex; flex-direction: column; gap: .35rem; }
+.pp-troops { flex-direction: row; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.pp-army { display: inline-flex; align-items: baseline; gap: .45rem; padding: .5em 1em; font-weight: 800; }
+.pp-army small { font-weight: 600; opacity: .8; }
+.pp-sh { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.pp-sh .tag { flex: 1; }
+.pp-has { display: flex; align-items: center; gap: .55rem; padding: .35rem .55rem; border-radius: 10px; background: rgba(255, 255, 255, .05); }
+.pp-has .ico { width: 30px; height: 30px; flex: none; }
+.pp-has span { display: flex; flex-direction: column; line-height: 1.2; }
+.pp-has small { color: var(--muted); font-size: .8rem; }
+.pp-later { font-size: .78rem; }
+.pp-quick { display: flex; gap: .5rem; flex-wrap: wrap; }
+.pp-quick button { flex: 1 1 auto; padding: .6em 1em; font-weight: 700; }
+.prov.focus .pr { stroke: var(--gold-hi); stroke-width: 2.6; stroke-dasharray: none; filter: drop-shadow(0 0 4px rgba(255, 226, 160, .8)); }
+.prov.focus .pf { fill-opacity: .4; }
+@media (max-width: 860px) {
+  .dock { gap: .35rem; }
+  .dock .barbody { max-height: 44vh; }
+  .dock .barhead .status { font-size: .8rem; }
+  .dock .right .restab .lbl { display: none; }
+  .pp-head { gap: .4rem; }
+  .pp-title b { font-size: 1rem; }
+  .pp-yield { font-size: .78rem; gap: .3rem; max-width: 45%; }
+  .pp-army { padding: .55em .9em; }
+  .zoom { display: flex; left: auto; right: 8px; top: auto; bottom: calc(var(--dock-h, 170px) + 12px); }
+  .zoom button { width: 40px; height: 40px; }
+}
+@media (max-width: 960px) and (max-height: 520px) and (orientation: landscape) {
+  .dock .barbody { max-height: none; }
+  .zoom { right: auto; left: 8px; bottom: 12px; }
+}
+.pp-hint { margin: 0 0 .45rem; font-size: .88rem; color: #d8cfbc; line-height: 1.35; }
+@media (max-width: 860px) { .pp-hint { font-size: .82rem; } }
