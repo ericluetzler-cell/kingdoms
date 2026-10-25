@@ -17,7 +17,7 @@
     return { ...B, icon: b === 'fort' ? '#castle' : '#b-' + b, where: B.coast ? 'an der Küste' : B.on.length >= 5 ? 'überall' : B.on.map(t => K.TERRAIN[t].name).join(', ') };
   }
   const newSeed = () => (Math.random() * 2 ** 32) >>> 0;
-  const APP_VERSION = '29';
+  const APP_VERSION = '30';
   const NET_V = 3;
   // nur zum Testen: mit ?debug in der Adresse ist der Spielzustand in der Konsole erreichbar
   const DEBUG = new URLSearchParams(location.search).has('debug');
@@ -1262,7 +1262,7 @@
     }
     // ankommende Truppen erst nach ihrem Lauf über die Karte zeigen
     if (st.march && st.march.id !== S.seenMarch) S.arrive = { i: st.march.to, t0: performance.now(), ms: 1050 };
-    if (st.battle && st.battle.id !== S.seenBattle && st.battle.won) S.arrive = { i: st.battle.to, t0: performance.now(), ms: 700 };
+    if (st.battle && st.battle.id !== S.seenBattle) S.arrive = { i: st.battle.to, t0: performance.now(), ms: 2300 };
     fixSelection();
     renderProvinces();
     renderNations();
@@ -1592,7 +1592,7 @@
         }
         const v = it.v, t = K.strongestType(v.u), n = K.total(v.u), fw = FIG_W[t];
         const spent = mine && v.done, picked = i === S.sel && S.selDivs && S.selDivs.includes(v.id);
-        html += `<g class="ctr${spent ? ' spent' : ''}${picked ? ' picked' : ''}${mine && !spent ? ' ready' : ''}${arr ? ' arriving' : ''}" data-i="${i}" data-d="${v.id}" transform="translate(${x.toFixed(1)} ${y.toFixed(1)})"${arr ? ` style="animation-delay:${arr.ms - (performance.now() - arr.t0)}ms"` : ''}>
+        html += `<g class="ctr${K.UNITS[t].monster ? ' monster m-' + t : ''}${spent ? ' spent' : ''}${picked ? ' picked' : ''}${mine && !spent ? ' ready' : ''}${arr ? ' arriving' : ''}" data-i="${i}" data-d="${v.id}" transform="translate(${x.toFixed(1)} ${y.toFixed(1)})"${arr ? ` style="animation-delay:${arr.ms - (performance.now() - arr.t0)}ms"` : ''}>
           <title>${esc(v.name)}: ${K.TYPES.filter(x2 => v.u[x2]).map(x2 => `${v.u[x2]} ${K.UNITS[x2].plural}`).join(', ')}</title>
           <rect class="hit" x="-2" y="-3" width="${W + 4}" height="28" rx="3"/>
           ${picked ? `<ellipse class="sel-glow" cx="${W / 2}" cy="15.5" rx="${W / 2 + 2}" ry="4"/>` : ''}
@@ -1622,16 +1622,17 @@
       const L = p.getTotalLength();
       p.style.strokeDasharray = L; p.style.strokeDashoffset = L;
     });
-    fx.querySelectorAll('animateMotion').forEach(a => { try { a.beginElement(); } catch { /* egal */ } });
+    fx.querySelectorAll('animateMotion, set').forEach(a => { try { a.beginElementAt(+(a.dataset.delay || 0)); } catch { /* egal */ } });
     clearTimeout(S.fxTimer);
     S.fxTimer = setTimeout(() => { fx.innerHTML = ''; }, ms);
   }
 
   // eine kleine Figur läuft den Pfad entlang (wippt beim Gehen)
-  const token = (d, col, fig, dur) => {
+  const token = (d, col, fig, dur, delay = 0) => {
     const fw = FIG_W[fig] || 12;
-    return `<g><g class="walker"><use href="#fig-${fig}" x="${-fw / 2 - 1}" y="-19" width="${fw + 2}" height="20" style="color:${col}"/></g>
-      <animateMotion dur="${dur}s" begin="indefinite" fill="freeze" path="${d}" calcMode="spline" keyTimes="0;1" keySplines=".45 0 .55 1"/></g>`;
+    return `<g visibility="hidden"><g class="walker"><use href="#fig-${fig}" x="${-fw / 2 - 1}" y="-19" width="${fw + 2}" height="20" style="color:${col}"/></g>
+      <set attributeName="visibility" to="visible" begin="indefinite" data-delay="${delay}"/>
+      <animateMotion dur="${dur}s" begin="indefinite" fill="freeze" path="${d}" calcMode="spline" keyTimes="0;1" keySplines=".45 0 .55 1" data-delay="${delay}"/></g>`;
   };
 
   // Pfeilhagel: viele kleine Pfeile fliegen in hohem Bogen auf das Ziel
@@ -1654,50 +1655,95 @@
   function playMarch(m) {
     const C = S.state.cells, col = S.state.players[C[m.to].owner].color;
     const d = curve(C[m.from], C[m.to]);
-    startFx(`<path class="fx-arrow march" d="${d}" stroke="#4ade80"/>${token(d, col, m.fig || 'w', 1.1)}`, 2000);
+    // kleine Kolonne: bis zu drei Figuren hintereinander, mit Staub an den Füßen
+    const n = Math.min(3, Math.max(1, Math.ceil((m.n || 1) / 3)));
+    let html = `<path class="fx-arrow march" d="${d}" stroke="#4ade80"/>`;
+    for (let k = n - 1; k >= 0; k--) html += token(d, col, m.fig || 'w', 1.15, k * 0.16);
+    const t = C[m.to];
+    html += Array.from({ length: 6 }, (_, k) => `<circle class="fx-puff" cx="${t.lx}" cy="${t.ly + 2}" r="${2 + (k % 2)}" style="--tx:${(Math.cos(k * 1.05) * 10).toFixed(1)}px;--ty:${(Math.sin(k * 1.05) * 4 - 2).toFixed(1)}px;animation-delay:${(1.1 + n * 0.16).toFixed(2)}s"/>`).join('');
+    startFx(html, 2300);
     Sound.play('march');
   }
 
+  // Einmarsch mit Gefecht: Angreifer laufen hinein, Verteidiger stellen sich, kurzer Kampf, dann fällt der Verlierer
   function playBattle(b) {
     const st = S.state, C = st.cells;
     const to = C[b.to], froms = b.froms || [b.from];
     const attacker = b.won ? to.owner : C[b.from].owner;
-    const col = st.players[attacker] ? st.players[attacker].color : '#fff';
-    const x2 = to.lx, y2 = to.ly;
-    const dust = Array.from({ length: 12 }, (_, k) => {
-      const a = k / 12 * Math.PI * 2, r = 14 + (k % 3) * 6;
-      return `<circle class="fx-dust" cx="${x2}" cy="${y2}" r="${1.6 + (k % 2)}" style="--tx:${(Math.cos(a) * r).toFixed(1)}px;--ty:${(Math.sin(a) * r).toFixed(1)}px"/>`;
-    }).join('');
-    let html = froms.map(f => { const d = curve(C[f], to); return `<path class="fx-arrow" d="${d}" stroke="${col}"/>${token(d, col, b.fig || 'w', 0.65)}`; }).join('') +
-      `<circle class="fx-ring" cx="${x2}" cy="${y2}" r="16"/><circle class="fx-ring r2" cx="${x2}" cy="${y2}" r="24"/>${dust}`;
+    const acol = st.players[attacker] ? st.players[attacker].color : '#fff';
+    const dcol = b.prev >= 0 && st.players[b.prev] ? st.players[b.prev].color : '#8a7f69';
+    const x2 = to.lx, y2 = to.ly, f0 = C[b.from];
+    // Blickrichtung: vom Hauptangreifer zur Provinz
+    let dx = x2 - f0.lx, dy = y2 - f0.ly; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+    const flipA = dx < 0 ? -1 : 1, px = -dy, py = dx;
+    const nA = Math.min(3, Math.max(1, Math.ceil((b.an || 3) / 3))), nD = b.dfig ? Math.min(3, Math.max(1, Math.ceil((b.dn || 1) / 3))) : 0;
+    const fig = (t, col, x, y, cls, flip, vars) => {
+      const fw = FIG_W[t] || 12, h = t === 'dr' ? 22 : 18;
+      return `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)})"><g class="bt ${cls}" style="${vars}"><g transform="scale(${flip} 1)">
+        <use href="#fig-${t}" x="${(-fw * h / 17 / 2).toFixed(1)}" y="${-h}" width="${(fw * h / 17).toFixed(1)}" height="${h}" style="color:${col}"/></g></g></g>`;
+    };
+    let html = '';
+    // eroberte Provinz färbt sich am Ende
     if (b.won) {
-      const ol = MapView.outlines(st.geo), f0 = C[b.from];
-      html = `<clipPath id="fxclip"><path d="${ol.prov[b.to]}"/></clipPath>
-        <g clip-path="url(#fxclip)"><circle class="fx-flood" cx="${(f0.lx + x2) / 2}" cy="${(f0.ly + y2) / 2}" r="${st.geo.s * 12}" fill="${col}"/></g>` + html +
-        `<g class="fx-flagwrap" transform="translate(${x2 + 8} ${y2 - 6})"><g class="fx-flag">
-          <line x1="0" y1="0" x2="0" y2="-24" stroke="#3b2a1a" stroke-width="1.6"/><circle cx="0" cy="-24.5" r="1.5" fill="#f5c542"/>
-          <path class="fx-cloth" d="M0.8 -23 Q8 -25 15 -21 Q9 -18 0.8 -15 Z" fill="${col}" stroke="rgba(0,0,0,.4)" stroke-width=".5"/></g></g>
-        <text class="fx-text win" x="${x2}" y="${y2 + 30}">Erobert!</text>`;
-    } else {
-      html += `<g class="fx-shield"><use href="#crest" x="${x2 - 9}" y="${y2 - 34}" width="18" height="20"/></g>
-        <text class="fx-text lose" x="${x2}" y="${y2 + 30}">Abgewehrt!</text>`;
+      const ol = MapView.outlines(st.geo);
+      html += `<clipPath id="fxclip"><path d="${ol.prov[b.to]}"/></clipPath>
+        <g clip-path="url(#fxclip)"><circle class="fx-flood late" cx="${x2}" cy="${y2}" r="${st.geo.s * 12}" fill="${acol}"/></g>`;
     }
-    if (b.aL) html += `<text class="fx-dmg" x="${C[b.from].lx}" y="${C[b.from].ly - 24}">−${b.aL}</text>`;
-    if (b.dL) html += `<text class="fx-dmg" x="${x2}" y="${y2 - 38}">−${b.dL}</text>`;
-    startFx(html, 3200);
-    const svg = svgEl();
-    svg.classList.remove('shake'); void svg.getBoundingClientRect(); svg.classList.add('shake');
-    setTimeout(() => Sound.play('battle'), 450);
+    froms.forEach(f => { html += `<path class="fx-arrow" d="${curve(C[f], to)}" stroke="${acol}"/>`; });
+    // Verteidiger stehen in der Provinz und schauen den Angreifern entgegen
+    for (let k = 0; k < nD; k++) {
+      const off = (k - (nD - 1) / 2) * 8;
+      const x = x2 + dx * 6 + px * off, y = y2 + dy * 6 + py * off + 4;
+      html += fig(b.dfig, dcol, x, y, `def ${b.won ? 'lose' : 'win'}`, -flipA, `--lx:${(dx * 3).toFixed(1)}px;--ly:${(dy * 3).toFixed(1)}px;animation-delay:0s,${0.75 + k * 0.07}s,1.95s`);
+    }
+    // Angreifer marschieren aus ihren Provinzen herein
+    for (let k = 0; k < nA; k++) {
+      const src = C[froms[k % froms.length]], off = (k - (nA - 1) / 2) * 8;
+      const x = x2 - dx * (nD ? 8 : 0) + px * off, y = y2 - dy * (nD ? 8 : 0) + py * off + 4;
+      html += fig(b.fig || 'w', acol, x, y, `att ${b.won ? 'win' : 'lose'}${nD ? '' : ' free'}`, flipA,
+        `--sx:${(src.lx - x).toFixed(1)}px;--sy:${(src.ly - y).toFixed(1)}px;--lx:${(-dx * 3).toFixed(1)}px;--ly:${(-dy * 3).toFixed(1)}px;--ax:${(dx * 9).toFixed(1)}px;--ay:${(dy * 9).toFixed(1)}px;animation-delay:${k * 0.08}s,${0.75 + k * 0.07}s,1.95s`);
+    }
+    // Funken und Staub, wo sich die Reihen treffen
+    if (nD) {
+      const mx = x2 - dx * 1, my = y2 - dy * 1 - 6;
+      for (let k = 0; k < 5; k++) {
+        const sx = mx + Math.sin(k * 2.3) * 7, sy = my + Math.cos(k * 1.7) * 5;
+        html += `<g transform="translate(${sx.toFixed(1)} ${sy.toFixed(1)})"><path class="bt-spark" style="animation-delay:${(0.8 + k * 0.24).toFixed(2)}s" d="M0 -5 L1.2 -1.2 L5 0 L1.2 1.2 L0 5 L-1.2 1.2 L-5 0 L-1.2 -1.2 Z"/></g>`;
+      }
+      html += Array.from({ length: 10 }, (_, k) => {
+        const a = k / 10 * Math.PI * 2, r = 12 + (k % 3) * 5;
+        return `<circle class="fx-puff" cx="${mx}" cy="${my + 8}" r="${2 + (k % 2)}" style="--tx:${(Math.cos(a) * r).toFixed(1)}px;--ty:${(Math.sin(a) * r * 0.5).toFixed(1)}px;animation-delay:${(0.75 + (k % 4) * 0.25).toFixed(2)}s"/>`;
+      }).join('');
+      html += `<text class="bt-clash" x="${mx}" y="${my - 12}">⚔️</text>`;
+    }
+    if (b.won) {
+      html += `<g class="fx-flagwrap late" transform="translate(${x2 + 8} ${y2 - 6})"><g class="fx-flag">
+          <line x1="0" y1="0" x2="0" y2="-24" stroke="#3b2a1a" stroke-width="1.6"/><circle cx="0" cy="-24.5" r="1.5" fill="#f5c542"/>
+          <path class="fx-cloth" d="M0.8 -23 Q8 -25 15 -21 Q9 -18 0.8 -15 Z" fill="${acol}" stroke="rgba(0,0,0,.4)" stroke-width=".5"/></g></g>
+        <text class="fx-text win late" x="${x2}" y="${y2 + 30}">Erobert!</text>`;
+    } else {
+      html += `<g class="fx-shield late"><use href="#crest" x="${x2 - 9}" y="${y2 - 40}" width="18" height="20"/></g>
+        <text class="fx-text lose late" x="${x2}" y="${y2 + 30}">Abgewehrt!</text>`;
+    }
+    if (b.aL) html += `<text class="fx-dmg late" x="${x2 - dx * 14}" y="${y2 - dy * 14 - 22}">−${b.aL}</text>`;
+    if (b.dL) html += `<text class="fx-dmg late" x="${x2 + dx * 10}" y="${y2 + dy * 10 - 26}">−${b.dL}</text>`;
+    startFx(html, 3600);
+    // Klirren während des Gefechts, Wackeln beim Aufprall
+    if (nD) { [0.8, 1.15, 1.5].forEach((t, k) => setTimeout(() => Sound.play(k === 1 ? 'battle' : 'volley'), t * 1000)); }
+    else setTimeout(() => Sound.play('march'), 100);
+    setTimeout(() => { const svg = svgEl(); svg.classList.remove('shake'); void svg.getBoundingClientRect(); svg.classList.add('shake'); }, 800);
     const meInvolved = attacker === S.me || b.prev === S.me;
-    setTimeout(() => Sound.play(b.won === (attacker === S.me) || !meInvolved && b.won ? 'win' : 'lose'), 1100);
+    setTimeout(() => Sound.play(b.won === (attacker === S.me) || !meInvolved && b.won ? 'win' : 'lose'), 2000);
 
-    const ban = $('#banner');
-    ban.innerHTML = `${pName(attacker)} ${b.won ? 'erobert' : 'scheitert an'} <b>${esc(to.name)}</b> (${Math.round(b.p * 100)} %${froms.length > 1 ? ` · aus ${froms.length} Provinzen` : ''})` +
-      ` <span class="loss">Verluste −${b.aL} / −${b.dL}${b.reward ? ' ·' + esc(b.reward) : ''}</span>`;
-    ban.hidden = false;
-    ban.classList.toggle('good', b.won);
-    clearTimeout(S.banTimer);
-    S.banTimer = setTimeout(() => { ban.hidden = true; }, 2800);
+    setTimeout(() => {
+      const ban = $('#banner');
+      ban.innerHTML = `${pName(attacker)} ${b.won ? 'erobert' : 'scheitert an'} <b>${esc(to.name)}</b> (${Math.round(b.p * 100)} %${froms.length > 1 ? ` · aus ${froms.length} Provinzen` : ''})` +
+        ` <span class="loss">Verluste −${b.aL} / −${b.dL}${b.reward ? ' ·' + esc(b.reward) : ''}</span>`;
+      ban.hidden = false;
+      ban.classList.toggle('good', b.won);
+      clearTimeout(S.banTimer);
+      S.banTimer = setTimeout(() => { ban.hidden = true; }, 2800);
+    }, 1900);
   }
 
   // ---------- Info, HUD, Leiste ----------
@@ -3081,6 +3127,11 @@
   // ---------- Was ist neu? ----------
   // Nach jedem Update erscheint einmal ein Fenster mit den Neuigkeiten (neueste zuerst).
   const CHANGELOG = [
+    { v: '30', title: 'Monster und Kampf-Animationen', items: [
+      '🐺 Neue Monster: ein zotteliger Wolf, ein Troll mit Keule, ein feuerspeiender roter Drache und ein Sandwurm mit Zahnkranz.',
+      '⚔️ Einmarsch mit Gefecht: Deine Truppen marschieren in die Provinz, die Verteidiger stellen sich, es fliegen Funken – dann fallen die Verlierer und die Sieger hissen ihre Fahne.',
+      '🚶 Märsche als kleine Kolonne mit Staubwolken. Monster auf der Karte bewegen sich und der Drache speit Feuer.',
+    ] },
     { v: '29', title: 'Neue Grafiken', items: [
       '🎨 Alle Gebäude sind neu gezeichnet: Bauernhof mit Silo, Sägewerk mit Kreissäge, Mine mit Lore voller Gold, Markt mit Ständen, Tempel mit Säulen, Hafen mit Schiff und mehr.',
       '⚔️ Neue Figuren für alle Einheiten: Krieger mit Schild, Bogenschützen mit Köcher, Speerkämpfer, Ritter und Schwere Reiterei auf Pferden, Katapult und Tribok.',

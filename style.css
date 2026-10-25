@@ -865,3 +865,37 @@ kbd { display: inline-block; padding: .05rem .45rem; border-radius: 6px; border:
 .modal.minigame.runner { max-width: 520px; }
 .rnwrap { width: 100%; display: flex; justify-content: center; }
 .rnwrap canvas { display: block; border-radius: 12px; touch-action: none; cursor: pointer; box-shadow: 0 8px 24px rgba(0, 0, 0, .5); user-select: none; -webkit-user-select: none; }
+
+/* ===== v30: Kampf-Animationen, Monster ===== */
+.bt { transform-box: fill-box; transform-origin: center bottom; }
+.bt.att, .bt.def { animation-name: btIn, lunge, btFall; animation-duration: .7s, .18s, .6s; animation-timing-function: cubic-bezier(.3, .1, .4, 1), ease-in-out, ease-in;
+  animation-iteration-count: 1, 6, 1; animation-direction: normal, alternate, normal; animation-fill-mode: both, none, forwards; }
+.bt.att.win { animation-name: btIn, lunge, btAdvance; }
+.bt.def { animation-name: btWait, lunge, btFall; }
+.bt.def.win { animation-name: btWait, lunge, btHold; }
+.bt.att.free { animation-name: btIn, btAdvance; animation-duration: .7s, .5s; animation-iteration-count: 1, 1; animation-direction: normal, normal; animation-fill-mode: both, forwards; animation-timing-function: ease, ease-out; }
+@keyframes btIn { from { transform: translate(var(--sx), var(--sy)); } 85% { transform: translate(0, -1px); } to { transform: translate(0, 0); } }
+@keyframes btWait { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: scale(1); } }
+@keyframes lunge { to { transform: translate(var(--lx), var(--ly)) rotate(-4deg); } }
+@keyframes btFall { from { opacity: 1; transform: rotate(0); } 60% { opacity: .9; transform: rotate(-80deg) translate(0, 2px); } to { opacity: 0; transform: rotate(-90deg) translate(0, 4px); } }
+@keyframes btAdvance { to { transform: translate(var(--ax), var(--ay)); opacity: 0; } }
+@keyframes btHold { from { opacity: 1; } 70% { opacity: 1; transform: translateY(-2px); } to { opacity: 0; } }
+@keyframes btEnd { to { opacity: 0; } }
+.bt-spark { fill: #fff3b0; stroke: #ffb347; stroke-width: .6; transform-box: fill-box; transform-origin: center; animation: spark .35s ease-out both; opacity: 0; }
+@keyframes spark { 0% { opacity: 0; transform: scale(.2) rotate(0); } 40% { opacity: 1; transform: scale(1.3) rotate(25deg); } 100% { opacity: 0; transform: scale(.6) rotate(45deg); } }
+.bt-clash { font-size: 11px; text-anchor: middle; animation: clash 1.2s .75s ease-out both; }
+@keyframes clash { 0% { opacity: 0; transform: scale(.4); } 20% { opacity: 1; transform: scale(1.2); } 80% { opacity: 1; } 100% { opacity: 0; } }
+.bt-clash { transform-box: fill-box; transform-origin: center; }
+.fx-puff { fill: #e8d7b0; opacity: 0; transform-box: fill-box; transform-origin: center; animation: dust .7s ease-out both; }
+.late.fx-flood { animation-delay: 2s; }
+.fx-flagwrap.late .fx-flag { animation-delay: 2.15s; }
+.fx-flagwrap.late { animation-delay: 3s; }
+.fx-text.late, .fx-shield.late { animation-delay: 2s; }
+.fx-dmg.late { animation-delay: 1.4s; }
+/* Monster auf der Karte: atmen, Drache speit ab und zu Feuer */
+#units .ctr.monster .fig { animation: mbreath 2.4s ease-in-out infinite; }
+#units .ctr.m-sw .fig { animation: worm 3.2s ease-in-out infinite; }
+@keyframes mbreath { 50% { transform: translateY(-.8px) scale(1.03, .98); } }
+@keyframes worm { 0%, 100% { transform: translateY(1px); } 50% { transform: translateY(-1.5px) rotate(-3deg); } }
+.drfire { transform-box: fill-box; transform-origin: left center; animation: drfire 2.4s ease-in-out infinite; }
+@keyframes drfire { 0%, 60%, 100% { opacity: 0; transform: scale(.3); } 75% { opacity: 1; transform: scale(1.6); } 88% { opacity: .8; transform: scale(2.2, 1.4); } }

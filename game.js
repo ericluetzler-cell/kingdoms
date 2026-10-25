@@ -1300,6 +1300,7 @@
         if (allied(st, p, t.owner)) return fail('Du kannst keine Verbündeten angreifen.');
         if (t.owner >= 0 && st.round <= st.truce) return fail(`Friedenszeit: Spieler können erst ab Runde ${st.truce + 1} angegriffen werden.`);
         const prev = t.owner;
+        const dfig = total(t.u) ? strongestType(t.u) : null, dn = total(t.u), an = total(force);
         const o = odds(st, p, force, t);
         const won = Math.random() < o.p;
         const spread = () => 0.6 + Math.random() * 0.8;
@@ -1339,7 +1340,7 @@
           if (prev < 0 && wasLair) rec(me).monsters++;
           if (prev >= 0) { const r = rec(st.players[prev]); r.fallen++; r.casualties += dL; r.killed += aL; }
           checkEliminated(st, prev);
-          st.battle = { id: ++st.seq, from: main, froms, to: a.to, won, aL, dL, p: o.p, reward, prev, fig: strongestType(force) };
+          st.battle = { id: ++st.seq, from: main, froms, to: a.to, won, aL, dL, p: o.p, reward, prev, fig: strongestType(force), dfig, dn, an };
         } else {
           aL = total(force);
           dL = lossesFrom(t.divs, o.A * 0.5 * spread(), tt => defOf(st, prev, tt, false));
@@ -1347,7 +1348,7 @@
           Object.assign(rec(me), { lost: rec(me).lost + 1, casualties: rec(me).casualties + aL, killed: rec(me).killed + dL });
           if (prev >= 0) { const r = rec(st.players[prev]); r.defended++; r.casualties += dL; r.killed += aL; }
           if (prev >= 0) log(st, `🛡️ {1} verteidigt ${t.name} gegen {0}.`, p, prev);
-          st.battle = { id: ++st.seq, from: main, froms, to: a.to, won, aL, dL, p: o.p, prev, fig: strongestType(force) };
+          st.battle = { id: ++st.seq, from: main, froms, to: a.to, won, aL, dL, p: o.p, prev, fig: strongestType(force), dfig, dn, an };
         }
         return { ok: true, won };
       }
