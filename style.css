@@ -52,9 +52,7 @@ input { background: rgba(0, 0, 0, .35); border: 1px solid var(--line-soft); bord
 .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; flex: none; box-shadow: 0 0 0 2px rgba(0, 0, 0, .4); }
 .pn { font-weight: 800; }
 .amt { display: inline-flex; align-items: center; gap: .3rem; font-variant-numeric: tabular-nums; }
-.coin { width: 16px; height: 16px; border-radius: 50%; display: inline-block; flex: none;
-  background: radial-gradient(circle at 35% 30%, #fff3b0, #f2c53d 45%, #a8741a); box-shadow: inset 0 0 0 1.5px #8a5d12; }
-.scroll { font-style: normal; }
+.coin, .scroll { width: 16px; height: 16px; display: inline-block; flex: none; vertical-align: -3px; }
 .ico { width: 20px; height: 20px; flex: none; color: currentColor; vertical-align: -4px; }
 .glass { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); backdrop-filter: blur(10px); box-shadow: 0 10px 30px rgba(0, 0, 0, .35); }
 
@@ -101,7 +99,8 @@ input { background: rgba(0, 0, 0, .35); border: 1px solid var(--line-soft); bord
 .preview { display: flex; flex-direction: column; gap: .5rem; min-width: 0; }
 .pv-frame { position: relative; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); background: var(--sea); aspect-ratio: 1.62; box-shadow: inset 0 0 30px rgba(0, 0, 0, .5); }
 .pv-frame canvas { width: 100%; height: 100%; display: block; object-fit: cover; }
-.pv-loading { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(10, 20, 30, .55); font-family: var(--display); color: var(--gold-hi); }
+.pv-loading { position: absolute; inset: 0; display: grid; place-items: center; align-content: center; gap: .6rem; background: rgba(10, 20, 30, .55); font-family: var(--display); color: var(--gold-hi); }
+.pv-loading::before { content: ''; width: 26px; height: 26px; border-radius: 50%; border: 3px solid rgba(232, 182, 76, .25); border-top-color: var(--gold); animation: spin 1s linear infinite; }
 .pv-info { display: flex; align-items: center; justify-content: space-between; gap: .8rem; }
 .pv-info b { font-family: var(--display); font-size: 1.15rem; display: block; }
 .pv-info small { color: var(--muted); }
@@ -341,7 +340,7 @@ input { background: rgba(0, 0, 0, .35); border: 1px solid var(--line-soft); bord
   .tiers { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0s !important; transition: none !important; }
+  *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; transition: none !important; }
 }
 
 /* ===== Reichsgrenzen, Truppen-Marker, Armeen (Hearts-of-Iron-Stil) ===== */
@@ -439,7 +438,7 @@ input { background: rgba(0, 0, 0, .35); border: 1px solid var(--line-soft); bord
 #units .ctr.arriving { animation: arrive .25s ease-out both; }
 @keyframes arrive { from { opacity: 0; } to { opacity: 1; } }
 .walker { animation: bob .22s ease-in-out infinite alternate; transform-box: fill-box; transform-origin: center bottom; }
-@keyframes bob { from { transform: translateY(0) rotate(-4deg); } to { transform: translateY(-1.6px) rotate(4deg); } }
+@keyframes bob { from { transform: translateY(0) rotate(-2deg); } to { transform: translateY(-1.2px) rotate(2deg); } }
 .fx-arrow.march { stroke-dasharray: 3 3; opacity: .8; }
 .bldg .field { fill: #d8b955; stroke: rgba(90, 65, 15, .7); stroke-width: .5; }
 .bldg .furrow { stroke: rgba(120, 90, 25, .65); stroke-width: .45; fill: none; }
@@ -672,7 +671,7 @@ button { -webkit-tap-highlight-color: transparent; }
 }
 
 /* ===== Rohstoffe (v19) ===== */
-.ri { font-style: normal; font-size: .95em; line-height: 1; }
+.ri { font-size: .95em; width: 1.05em; height: 1.05em; flex: none; vertical-align: -.16em; }
 .res .rs small { margin-left: 1px; }
 .card-btn em.price { flex-wrap: wrap; gap: .15rem .4rem; justify-content: flex-end; font-size: .85rem; }
 .card-btn em.price > span { display: inline-flex; align-items: center; gap: .1rem; }
@@ -683,7 +682,7 @@ button { -webkit-tap-highlight-color: transparent; }
   .res .cells { display: none; }
   .res small { font-size: .62rem; }
   .res .amt { gap: .15rem; }
-  .res .coin { width: 13px; height: 13px; }
+  .res .coin, .res .scroll { width: 13px; height: 13px; }
   .card-btn { width: 96px; }
   .card-btn em.price { justify-content: center; font-size: .72rem; gap: .05rem .3rem; }
   .card-btn em.price .ri { font-size: .68rem; }
@@ -822,31 +821,33 @@ kbd { display: inline-block; padding: .05rem .45rem; border-radius: 6px; border:
 .realm { letter-spacing: .24em; fill-opacity: .7; stroke-width: 1.3px; stroke: rgba(12, 9, 4, .6); }
 
 /* ===== v26: Provinz-Schmuck ===== */
-.deco { filter: drop-shadow(0 .5px .5px rgba(0, 0, 0, .55)); }
-.deco .field { fill: #d8b955; stroke: rgba(90, 65, 15, .7); stroke-width: .5; }
-.deco .furrow { stroke: rgba(120, 90, 25, .65); stroke-width: .45; fill: none; }
-.deco .hay { fill: #e2c25a; stroke: #8a6a1e; stroke-width: .4; }
-.deco .log { fill: #8b5a2b; stroke: #4a2e14; stroke-width: .4; }
-.deco .logend { fill: #e2ad73; stroke: #4a2e14; stroke-width: .3; }
-.deco .stumpd { fill: #6e4422; }
-.deco .stone { fill: #b9b2a4; stroke: #5a544a; stroke-width: .4; }
-.deco .spoild { fill: #8d806c; }
-.deco .tunnel { fill: #1f1a14; stroke: #8b5a2b; stroke-width: .7; }
-.deco .rail { stroke: #5a4a3a; stroke-width: .6; }
-.deco .hull { fill: #7a4a24; stroke: #3a220f; stroke-width: .4; }
-.deco .mast { stroke: #3a220f; stroke-width: .5; fill: none; }
-.deco .sail { fill: #f2ead6; stroke: #8a7a5a; stroke-width: .3; }
-.deco .wall, .deco .hwall { fill: #e4d6b8; stroke: #6a5a40; stroke-width: .35; }
-.deco .roofb { fill: #3d6fa6; stroke: #23405f; stroke-width: .35; }
-.deco .stall { fill: #c9a46a; stroke: #6a5030; stroke-width: .3; }
-.deco .awning { fill: #e5484d; stroke: #7a1d1d; stroke-width: .3; }
-.deco .awning.b { fill: #3d8fd6; stroke: #1d3f7a; }
-.deco .col { stroke: #8a7a5a; stroke-width: .5; }
-.deco .tent { fill: #d8c49a; stroke: #6a5030; stroke-width: .35; }
-.deco .palisade { fill: #8b5a2b; stroke: #4a2e14; stroke-width: .4; }
+.deco .field { fill: #e0b955; stroke: #2b1d12; stroke-width: .4; }
+.deco .furrow { stroke: #a8842a; stroke-width: .45; fill: none; }
+.deco .hay { fill: #e0b955; stroke: #2b1d12; stroke-width: .35; }
+.deco .log { fill: #8f5a30; stroke: #2b1d12; stroke-width: .35; }
+.deco .logend { fill: #e2ad73; stroke: #2b1d12; stroke-width: .3; }
+.deco .stumpd { fill: #6e4423; stroke: #2b1d12; stroke-width: .3; }
+.deco .stone { fill: #d8d0bd; stroke: #2b1d12; stroke-width: .35; }
+.deco .spoild { fill: #8f8574; stroke: #2b1d12; stroke-width: .3; }
+.deco .tunnel { fill: #15110c; stroke: #8f5a30; stroke-width: .7; }
+.deco .rail { stroke: #4a3a2a; stroke-width: .6; }
+.deco .hull { fill: #8f5a30; stroke: #2b1d12; stroke-width: .35; }
+.deco .mast { stroke: #2b1d12; stroke-width: .5; fill: none; }
+.deco .sail { fill: #f1e7cf; stroke: #2b1d12; stroke-width: .3; }
+.deco .wall, .deco .hwall { fill: #e9e2cf; stroke: #2b1d12; stroke-width: .35; }
+.deco .hshade { fill: #2b1d12; opacity: .16; }
+.deco .hroof { stroke: #2b1d12; stroke-width: .35; stroke-linejoin: round; }
+.deco .roofb { fill: #4a6fa5; stroke: #2b1d12; stroke-width: .35; }
+.deco .stall { fill: #c9a36a; stroke: #2b1d12; stroke-width: .3; }
+.deco .awning { fill: #c4553a; stroke: #2b1d12; stroke-width: .3; }
+.deco .awning.b { fill: #4a6fa5; }
+.deco .col { stroke: #2b1d12; stroke-width: .4; }
+.deco .tent { fill: #f1e7cf; stroke: #2b1d12; stroke-width: .35; }
+.deco .palisade { fill: #8f5a30; stroke: #2b1d12; stroke-width: .35; }
 .deco .win { fill: #ffd77a; }
-.deco .road { fill: none; stroke: #b49a6a; stroke-width: 1.6; stroke-linecap: round; opacity: .8; stroke-dasharray: 2.5 1.2; }
-.deco .garden { fill: #4f8a3a; } .deco .garden2 { fill: #6fae4a; }
+.deco .road { fill: none; stroke: #c8ad7a; stroke-width: 1.6; stroke-linecap: round; opacity: .8; stroke-dasharray: 2.5 1.2; }
+.deco .garden { fill: #3f7a34; stroke: #2b1d12; stroke-width: .3; } .deco .garden2 { fill: #6aa04a; }
+.deco .a-smoke { fill: #e8e2d6; }
 .bldg .bplate { fill: rgba(0, 0, 0, .3); }
 .prov.capital .pr { stroke: #ffd36b; stroke-width: 1.8; stroke-dasharray: none; filter: drop-shadow(0 0 3px rgba(255, 211, 107, .8)); }
 .prov.capital .pf { fill-opacity: .34; }
@@ -868,7 +869,7 @@ kbd { display: inline-block; padding: .05rem .45rem; border-radius: 6px; border:
 
 /* ===== v30: Kampf-Animationen, Monster ===== */
 .bt { transform-box: fill-box; transform-origin: center bottom; }
-.bt.att, .bt.def { animation-name: btIn, lunge, btFall; animation-duration: .7s, .18s, .6s; animation-timing-function: cubic-bezier(.3, .1, .4, 1), ease-in-out, ease-in;
+.bt.att, .bt.def { animation-name: btIn, lunge, btFall; animation-duration: .7s, .18s, .8s; animation-timing-function: cubic-bezier(.3, .1, .4, 1), ease-in-out, ease-in;
   animation-iteration-count: 1, 6, 1; animation-direction: normal, alternate, normal; animation-fill-mode: both, none, forwards; }
 .bt.att.win { animation-name: btIn, lunge, btAdvance; }
 .bt.def { animation-name: btWait, lunge, btFall; }
@@ -877,26 +878,99 @@ kbd { display: inline-block; padding: .05rem .45rem; border-radius: 6px; border:
 @keyframes btIn { from { transform: translate(var(--sx), var(--sy)); } 85% { transform: translate(0, -1px); } to { transform: translate(0, 0); } }
 @keyframes btWait { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: scale(1); } }
 @keyframes lunge { to { transform: translate(var(--lx), var(--ly)) rotate(-4deg); } }
-@keyframes btFall { from { opacity: 1; transform: rotate(0); } 60% { opacity: .9; transform: rotate(-80deg) translate(0, 2px); } to { opacity: 0; transform: rotate(-90deg) translate(0, 4px); } }
-@keyframes btAdvance { to { transform: translate(var(--ax), var(--ay)); opacity: 0; } }
-@keyframes btHold { from { opacity: 1; } 70% { opacity: 1; transform: translateY(-2px); } to { opacity: 0; } }
+@keyframes btFall { from { opacity: 1; transform: rotate(0); } 20% { transform: translate(0, -1px) rotate(8deg); } 60% { opacity: .9; transform: rotate(-80deg) translate(0, 2px); } to { opacity: 0; transform: rotate(-90deg) translate(0, 4px); } }
+@keyframes btAdvance { 0% { transform: none; } 18% { transform: translateY(-3px); } 34% { transform: none; } 50% { transform: translateY(-2.4px); } 64% { transform: none; opacity: 1; } 100% { transform: translate(var(--ax), var(--ay)); opacity: 0; } }
+@keyframes btHold { 0% { opacity: 1; transform: none; } 18% { transform: translateY(-3px); } 34% { transform: none; } 50% { transform: translateY(-2.4px); } 64% { transform: none; opacity: 1; } 100% { opacity: 0; } }
 @keyframes btEnd { to { opacity: 0; } }
 .bt-spark { fill: #fff3b0; stroke: #ffb347; stroke-width: .6; transform-box: fill-box; transform-origin: center; animation: spark .35s ease-out both; opacity: 0; }
 @keyframes spark { 0% { opacity: 0; transform: scale(.2) rotate(0); } 40% { opacity: 1; transform: scale(1.3) rotate(25deg); } 100% { opacity: 0; transform: scale(.6) rotate(45deg); } }
-.bt-clash { font-size: 11px; text-anchor: middle; animation: clash 1.2s .75s ease-out both; }
+.bt-clash { animation: clash 1.2s .75s ease-out both; }
 @keyframes clash { 0% { opacity: 0; transform: scale(.4); } 20% { opacity: 1; transform: scale(1.2); } 80% { opacity: 1; } 100% { opacity: 0; } }
 .bt-clash { transform-box: fill-box; transform-origin: center; }
-.fx-puff { fill: #e8d7b0; opacity: 0; transform-box: fill-box; transform-origin: center; animation: dust .7s ease-out both; }
+.fx-puff { fill: #e9e0c8; stroke: rgba(43, 29, 18, .35); stroke-width: .4; opacity: 0; transform-box: fill-box; transform-origin: center; animation: dust .7s ease-out both; }
+.bt-burst { fill: #fff3b0; stroke: #e0882a; stroke-width: .8; stroke-linejoin: round; animation-delay: .72s; animation-duration: .45s; }
+.bt.lose .hurt { animation: hurt .36s ease-out 3; animation-delay: var(--hit-delay, .9s); }
+@keyframes hurt { 0%, 100% { transform: none; opacity: 1; } 30% { transform: translateX(-1.6px); opacity: .55; } }
+.fx-dust, .fx-puff, .fx-ring { opacity: 0; animation-fill-mode: forwards; } /* vor dem Einsatz unsichtbar */
+.fx-ring.late { animation-delay: 2.2s; }
+.fx-ring.r2.late { animation-delay: 2.34s; }
 .late.fx-flood { animation-delay: 2s; }
 .fx-flagwrap.late .fx-flag { animation-delay: 2.15s; }
 .fx-flagwrap.late { animation-delay: 3s; }
 .fx-text.late, .fx-shield.late { animation-delay: 2s; }
 .fx-dmg.late { animation-delay: 1.4s; }
 /* Monster auf der Karte: atmen, Drache speit ab und zu Feuer */
-#units .ctr.monster .fig { animation: mbreath 2.4s ease-in-out infinite; }
-#units .ctr.m-sw .fig { animation: worm 3.2s ease-in-out infinite; }
-#units .ctr.m-tr .fig { animation: none; } /* Troll atmet schon im Bild (Spritesheet) */
-@keyframes mbreath { 50% { transform: translateY(-.8px) scale(1.03, .98); } }
-@keyframes worm { 0%, 100% { transform: translateY(1px); } 50% { transform: translateY(-1.5px) rotate(-3deg); } }
-.drfire { transform-box: fill-box; transform-origin: left center; animation: drfire 2.4s ease-in-out infinite; }
-@keyframes drfire { 0%, 60%, 100% { opacity: 0; transform: scale(.3); } 75% { opacity: 1; transform: scale(1.6); } 88% { opacity: .8; transform: scale(2.2, 1.4); } }
+@keyframes mbreath { 50% { transform: translateY(-.6px) scale(1.02, .985); } }
+
+/* ===== v32: Grafik-Überarbeitung ===== */
+/* Bewegung in den Symbolen: Schmuck nur auf der Karte (--amb), Glieder nur beim Marschieren und Kämpfen (--walk, --swing) */
+#map { --amb: running; }
+.mapwrap.dragging #map { --amb: paused; }
+.a-sway { transform-box: fill-box; transform-origin: 50% 100%; animation: sway 2.8s ease-in-out infinite alternate; }
+@keyframes sway { from { transform: skewX(-7deg); } to { transform: skewX(6deg); } }
+.lgA, .lgB { animation: step .44s linear infinite; }
+.lgB { animation-delay: -.22s; }
+@keyframes step { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(20deg); } 75% { transform: rotate(-20deg); } }
+.arm { animation: swing .36s ease-in-out infinite; }
+@keyframes swing { 0%, 100% { transform: rotate(0); } 45% { transform: rotate(34deg); } }
+.draw { animation: drawbow .36s ease-in-out infinite; }
+@keyframes drawbow { 0%, 100% { transform: none; } 55% { transform: translateX(-1.8px); } 62% { transform: translateX(.6px); } }
+.sarm { animation: hurl 1s ease-in-out infinite; }
+@keyframes hurl { 0%, 100% { transform: rotate(0); } 40% { transform: rotate(40deg); } 55% { transform: rotate(-12deg); } }
+.whl { animation: spin .8s linear infinite; }
+/* Monster: Ausschnitte der Bilder bewegen sich einzeln */
+.dr-hover { animation: drhover 1.6s ease-in-out infinite; }
+@keyframes drhover { 0%, 100% { transform: translateY(0); } 40% { transform: translateY(-3px); } }
+.dr-wing { transform-origin: 88px 70px; animation: drflap 1.6s ease-in-out infinite; }
+@keyframes drflap { 0%, 100% { transform: none; } 40% { transform: scale(1.03, .7) skewX(-5deg); } }
+.dr-shadow { transform-origin: 83.5px 127px; animation: drshadow 1.6s ease-in-out infinite; }
+@keyframes drshadow { 40% { transform: scale(.9); opacity: .7; } }
+.drfire { transform-origin: 132px 57px; animation: drfire 3.2s ease-in-out infinite; }
+@keyframes drfire { 0%, 55%, 100% { transform: scale(.3); opacity: .75; } 65% { transform: scale(1.2); opacity: 1; } 80% { transform: scale(1, .9); opacity: 1; } 92% { transform: scale(.45); opacity: .8; } }
+.a-spin { animation: spin 2.4s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.a-chop { animation: chop 1.8s ease-in infinite; }
+@keyframes chop { 0%, 55%, 100% { transform: rotate(0); } 70% { transform: rotate(-28deg); } 80% { transform: rotate(6deg); } }
+.a-flick { transform-box: fill-box; transform-origin: 50% 100%; animation: flick .45s ease-in-out infinite alternate; }
+@keyframes flick { 0% { transform: scale(1, 1); opacity: 1; } 50% { transform: scale(.8, 1.15); } 100% { transform: scale(1.1, .85); opacity: .8; } }
+.a-glow { animation: glimmer 3s ease-in-out infinite; }
+@keyframes glimmer { 50% { opacity: .7; } }
+.a-flag { transform-box: fill-box; transform-origin: 0 50%; animation: wave .6s ease-in-out infinite alternate; }
+.a-bob { transform-box: fill-box; transform-origin: 50% 100%; animation: rock 2.6s ease-in-out infinite alternate; }
+@keyframes rock { from { transform: translateY(0) rotate(-2deg); } to { transform: translateY(.6px) rotate(2deg); } }
+.a-smoke circle { transform-box: fill-box; transform-origin: center; animation: smoke 3s ease-out infinite; }
+@keyframes smoke { 0% { transform: translate(0, 0) scale(.4); opacity: 0; } 15% { opacity: .75; } 100% { transform: translate(2.5px, -7px) scale(1.8); opacity: 0; } }
+.a-wave { animation: wavelet 2.4s ease-in-out infinite alternate; }
+@keyframes wavelet { from { transform: translateX(-.6px); opacity: .5; } to { transform: translateX(.6px); opacity: 1; } }
+/* Umgebung: Bäume wiegen sich, Wellenkämme glitzern auf dem Meer */
+#ambient { pointer-events: none; }
+.a-tree { transform-box: fill-box; transform-origin: 50% 100%; animation: treesway 3.6s ease-in-out infinite alternate; }
+@keyframes treesway { from { transform: rotate(-3deg); } to { transform: rotate(2.5deg); } }
+.a-wv { fill: none; stroke: #e6f6ff; stroke-width: .55; stroke-linecap: round; opacity: 0; animation: glint 4.4s ease-in-out infinite; }
+@keyframes glint { 0%, 100% { opacity: 0; transform: translateX(-1.2px); } 50% { opacity: .6; transform: translateX(1.2px); } }
+.wo-lurk { transform-origin: 95px 128px; animation: wolflurk 3.6s ease-in-out infinite; }
+@keyframes wolflurk { 0%, 100% { transform: none; } 45%, 60% { transform: translate(-1px, 2px) skewX(-5deg) scale(1.01, .95); } }
+.wo-pant { transform-origin: 150px 70px; animation: wolfpant .32s ease-in-out infinite alternate; }
+@keyframes wolfpant { to { transform: scale(1.012, 1.025); } }
+.tr-sway { transform-origin: 70px 128px; animation: trsway 2.4s ease-in-out infinite alternate; }
+@keyframes trsway { from { transform: rotate(-1.4deg); } to { transform: rotate(1.1deg) translateY(1px); } }
+.sw-rise { transform-origin: 58px 100px; animation: worm 5.2s ease-in-out infinite; }
+@keyframes worm { 0%, 100% { transform: translateY(0) rotate(0); } 28% { transform: translateY(0) rotate(-3deg); } 50% { transform: translateY(0) rotate(2deg); } 58% { transform: translateY(0) rotate(0); }
+  66%, 74% { transform: translateY(30px) rotate(0); } 82% { transform: translateY(-5px) rotate(-2deg); } 90% { transform: translateY(1px) rotate(0); } }
+.a-sway, .a-spin, .a-chop, .a-flick, .a-glow, .a-flag, .a-bob, .a-smoke circle, .a-wave, .a-tree, .a-wv,
+.dr-hover, .dr-wing, .dr-shadow, .drfire, .wo-lurk, .wo-pant, .tr-sway, .sw-rise { animation-play-state: var(--amb, paused); }
+/* Figuren auf der Karte: Umriss statt Schlagschatten; eigene bereite Truppen atmen leicht */
+#units .ctr .fig { filter: none; }
+#units .ctr.ready:not(.picked) .fig { animation: mbreath 2.6s ease-in-out infinite; }
+.mapwrap.dragging #units .ctr .fig { animation-play-state: paused; }
+.lgA, .lgB { animation-play-state: var(--walk, paused); animation-iteration-count: var(--walk-n, infinite); }
+.arm, .draw, .sarm { animation-play-state: var(--swing, paused); animation-delay: var(--swing-delay, 0s); animation-iteration-count: var(--swing-n, infinite); }
+.sarm { animation-iteration-count: var(--hurl-n, infinite); }
+.whl { animation-play-state: var(--walk, paused); animation-iteration-count: var(--walk-n, infinite); }
+.walker { --walk: running; }
+.bt { --walk: running; --walk-n: 2; --swing: running; --swing-n: 3; --hurl-n: 1; }
+.bt.def { --walk-n: 0; }
+@media (prefers-reduced-motion: reduce) {
+  #map, .mapwrap.dragging #map { --amb: paused; }
+  .walker, .bt { --walk: paused; --swing: paused; }
+}

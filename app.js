@@ -17,7 +17,7 @@
     return { ...B, icon: b === 'fort' ? '#castle' : '#b-' + b, where: B.coast ? 'an der Küste' : B.on.length >= 5 ? 'überall' : B.on.map(t => K.TERRAIN[t].name).join(', ') };
   }
   const newSeed = () => (Math.random() * 2 ** 32) >>> 0;
-  const APP_VERSION = '31';
+  const APP_VERSION = '32';
   const NET_V = 3;
   // nur zum Testen: mit ?debug in der Adresse ist der Spielzustand in der Konsole erreichbar
   const DEBUG = new URLSearchParams(location.search).has('debug');
@@ -39,12 +39,14 @@
   };
   const newTok = () => Array.from(crypto.getRandomValues(new Uint8Array(12)), b => b.toString(16).padStart(2, '0')).join('');
   const PID = store.get('kingdoms-pid') || (() => { const v = Math.random().toString(36).slice(2, 12); store.set('kingdoms-pid', v); return v; })();
-  const coin = n => `<span class="amt"><i class="coin"></i>${n}</span>`;
-  const scroll = n => `<span class="amt"><i class="scroll">📜</i>${n}</span>`;
-  const resAmt = (k, n) => `<span class="amt" title="${K.RES[k].name}"><i class="ri">${K.RES[k].icon}</i>${n}</span>`;
+  const RICO = k => `<svg class="ri" aria-hidden="true"><use href="#res-${k}"/></svg>`;
+  const COIN = '<svg class="coin" aria-hidden="true"><use href="#res-gold"/></svg>';
+  const coin = n => `<span class="amt">${COIN}${n}</span>`;
+  const scroll = n => `<span class="amt"><svg class="scroll" aria-hidden="true"><use href="#res-sci"/></svg>${n}</span>`;
+  const resAmt = (k, n) => `<span class="amt" title="${K.RES[k].name}">${RICO(k)}${n}</span>`;
   // Preis für Karten: Gold und Rohstoffe, fehlende rot
-  const price = (gold, need, pl) => `<em class="price">${gold ? `<span class="${pl && pl.gold < gold ? 'miss' : ''}">${gold}<i class="coin"></i></span>` : ''}${K.RKEYS.filter(k => need && need[k])
-    .map(k => `<span class="${pl && (pl[k] || 0) < need[k] ? 'miss' : ''}">${need[k]}<i class="ri">${K.RES[k].icon}</i></span>`).join('')}</em>`;
+  const price = (gold, need, pl) => `<em class="price">${gold ? `<span class="${pl && pl.gold < gold ? 'miss' : ''}">${gold}${COIN}</span>` : ''}${K.RKEYS.filter(k => need && need[k])
+    .map(k => `<span class="${pl && (pl[k] || 0) < need[k] ? 'miss' : ''}">${need[k]}${RICO(k)}</span>`).join('')}</em>`;
   const priceText = (gold, need) => [gold ? gold + ' Gold' : '', ...K.RKEYS.filter(k => need && need[k]).map(k => `${need[k]} ${K.RES[k].name}`)].filter(Boolean).join(', ');
 
   if (DEBUG) window.__kingdoms = { S, render: () => render(), mini: () => Mini };
@@ -146,7 +148,7 @@
 
   setTimeout(async () => {
     const w = K.generateWorld(4, ['continent', 'twin', 'inland', 'islands'][newSeed() % 4], 'large', newSeed());
-    const url = await MapView.toURL(MapView.terrain(w.geo, 1.6));
+    const url = await MapView.toURL(MapView.terrain(w.geo, 1.6, true));
     document.querySelectorAll('.title-bg').forEach(e => { e.style.backgroundImage = `url(${url})`; });
   }, 50);
 
@@ -299,7 +301,7 @@
     if (S.peer) { try { S.peer.destroy(); } catch { /* egal */ } }
     Object.assign(S, { role: null, me: 0, state: null, geo: null, lobby: [], code: '', peer: null, conns: new Map(), conn: null, seats: null, joinReqs: [], reqSeq: 0, seatTok: null, pin: -1, infoCell: -1,
       avatars: null, sel: -1, selPref: null, target: -1, mode: 'recruit', unit: 'w', bldg: 'lumber', amount: 1, turnKey: '',
-      seenBattle: 0, seenMarch: 0, chat: [], tut: null, lastLogN: null, mapKey: '', nationKey: '', overShown: false, pick: null, plan: null, selDivs: null, split: null });
+      seenBattle: 0, seenMarch: 0, chat: [], tut: null, lastLogN: null, mapKey: '', nationKey: '', labelKey: '', overShown: false, pick: null, plan: null, selDivs: null, split: null });
     $('#planner').hidden = true;
     $('#coach').hidden = true;
     $('#research').hidden = true;
@@ -942,7 +944,7 @@
     setTimeout(saveGame, 0);
     S.avatars = S.lobby.map(p => p.avatar || null);
     S.me = 0;
-    Object.assign(S, { sel: -1, selDivs: null, split: null, plan: null, seenBattle: 0, seenMarch: 0, turnKey: '', nationKey: '' });
+    Object.assign(S, { sel: -1, selDivs: null, split: null, plan: null, seenBattle: 0, seenMarch: 0, turnKey: '', nationKey: '', labelKey: '' });
     $('#overlay').hidden = true;
     show('game');
     broadcastState(true);
@@ -1143,6 +1145,7 @@
     const img = $('#terrainImg');
     img.setAttribute('width', geo.W); img.setAttribute('height', geo.H);
     img.removeAttribute('href');
+    $('#ambient').innerHTML = MapView.ambient(geo);
     requestAnimationFrame(() => fitView());
     const url = await MapView.toURL(MapView.terrain(geo, Math.min(3, 2400 / geo.W)));
     if (S.mapKey === key) img.setAttribute('href', url);
@@ -1500,7 +1503,7 @@
       const houses = hs.map((p, k) => {
         const roof = k % 3 === 0 ? col : ['#a34a30', '#7a5a40', '#8b3a2a'][k % 3];
         return k % 4 === 3 ? `<g transform="translate(${p.x.toFixed(1)} ${p.y.toFixed(1)})"><circle class="garden" r="3.2"/><circle class="garden2" cx="1.4" cy="-1" r="1.6"/></g>`
-          : `<g transform="translate(${p.x.toFixed(1)} ${p.y.toFixed(1)})"><rect class="hwall" x="-3" y="-1.5" width="6" height="4.5"/><path d="M-3.8 -1.4 L0 -4.6 L3.8 -1.4 Z" style="fill:${roof}"/><rect class="win" x="-1.5" y="0" width="1.2" height="1.4"/><rect class="win" x=".6" y="0" width="1.2" height="1.4"/></g>`;
+          : `<g transform="translate(${p.x.toFixed(1)} ${p.y.toFixed(1)})"><rect class="hwall" x="-3" y="-1.5" width="6" height="4.5"/><rect class="hshade" x="0.6" y="-1.3" width="2.2" height="4.1"/><path class="hroof" d="M-3.8 -1.4 L0 -4.6 L3.8 -1.4 Z" style="fill:${roof}"/><rect class="win" x="-1.5" y="0" width="1.2" height="1.4"/><rect class="win" x=".6" y="0" width="1.2" height="1.4"/>${k % 5 === 1 ? `<g class="a-smoke" transform="translate(1.8 -4.4) scale(.55)"><circle r="1.2"/><circle r="1.2" style="animation-delay:-1s"/><circle r="1.2" style="animation-delay:-2s"/></g>` : ''}</g>`;
       }).join('');
       h += `<g class="deco town">${roads}${houses}</g>`;
     }
@@ -1511,6 +1514,10 @@
   const BLDG_SPOT = [-27, 4];
   function renderLabels() {
     const st = S.state, C = st.cells;
+    // nur neu zeichnen, wenn sich etwas Sichtbares geändert hat (sonst springen die kleinen Animationen bei jedem Klick zurück)
+    const key = st.players.map(p => p.color).join() + '|' + C.map(c => [c.owner, c.building, c.hut ? 1 : 0, c.walls ? 1 : 0, c.capital ? 1 : 0, c.throne ? 1 : 0, c.name].join(':')).join('|');
+    if (S.labelKey === key && $('#labels').firstChild) return;
+    S.labelKey = key;
     S.seenBldg = S.seenBldg || {};
     let html = '';
     C.forEach((c, i) => {
@@ -1522,10 +1529,10 @@
       if (K.isCity(c)) {
         if (c.capital) {
           html += `<ellipse class="cap-glow" cx="${x}" cy="${y - 22}" rx="22" ry="9" fill="${col}"/>`;
-          html += `<use href="#capital" x="${x - 19}" y="${y - 52}" width="38" height="32" style="color:${col}" filter="url(#f-soft)"/>`;
+          html += `<use href="#capital" x="${x - 19}" y="${y - 52}" width="38" height="32" style="color:${col}"/>`;
           html += `<use class="cap-crown" href="#crown" x="${x - 6}" y="${y - 63}" width="12" height="7.5"/>`;
-        } else html += `<use href="#castle" x="${x - 12}" y="${y - 41}" width="24" height="20" style="color:${col}" filter="url(#f-soft)"/>`;
-        if (c.walls) html += `<use href="#walls" x="${x - 20}" y="${y - 29}" width="40" height="13" filter="url(#f-soft)"/>`;
+        } else html += `<use href="#castle" x="${x - 12}" y="${y - 41}" width="24" height="20" style="color:${col}"/>`;
+        if (c.walls) html += `<use href="#walls" x="${x - 20}" y="${y - 33.5}" width="40" height="13"/>`;
       }
       const key = c.building ? i + ':' + c.building : '';
       const fresh = key && S.seenBldg[i] !== undefined && S.seenBldg[i] !== key;
@@ -1541,11 +1548,12 @@
         } else if (c.building === 'mine') art = `<path class="spoil" d="M${bx - 9} ${by + 8} q5 -6 10 0 z"/>`;
         else if (c.building === 'quarry') art = `<path class="spoil" d="M${bx + 5} ${by + 9} l3 -4 l3 4 z M${bx - 11} ${by + 8} l2.5 -3.5 l2.5 3.5 z"/>`;
         else if (c.building === 'lumber') art = `<path class="stump" d="M${bx + 7} ${by + 6} h3 v2 h-3 z M${bx - 10} ${by + 7} h3 v2 h-3 z"/>`;
+        if (fresh) html += puffs(bx, by + 8, 8, 0.45, 14);
         html += `<g class="bldg${fresh ? ' fresh' : ''}" style="transform-origin:${bx}px ${by + 8}px">${art}
           <ellipse class="bplate" cx="${bx}" cy="${by + 9}" rx="11" ry="3.4"/>
-          <use href="#b-${c.building}" x="${bx - 12}" y="${by - 13}" width="24" height="24" filter="url(#f-soft)"/></g>`;
+          <use href="#b-${c.building}" x="${bx - 12}" y="${by - 13}" width="24" height="24" style="color:${col}"/></g>`;
       }
-      if (c.hut) html += `<use href="#hut" x="${x + BLDG_SPOT[0] - 7}" y="${y + BLDG_SPOT[1] - 7}" width="14" height="14" filter="url(#f-soft)"/>`;
+      if (c.hut) html += `<use href="#hut" x="${x + BLDG_SPOT[0] - 7}" y="${y + BLDG_SPOT[1] - 7}" width="14" height="14"/>`;
     });
     $('#labels').innerHTML = html;
   }
@@ -1596,7 +1604,7 @@
           <title>${esc(v.name)}: ${K.TYPES.filter(x2 => v.u[x2]).map(x2 => `${v.u[x2]} ${K.UNITS[x2].plural}`).join(', ')}</title>
           <rect class="hit" x="-2" y="-3" width="${W + 4}" height="28" rx="3"/>
           ${picked ? `<ellipse class="sel-glow" cx="${W / 2}" cy="15.5" rx="${W / 2 + 2}" ry="4"/>` : ''}
-          <use class="fig" href="#fig-${t}" x="${(W - fw) / 2}" y="-1" width="${fw}" height="17" style="color:${col}"/>
+          <use class="fig" href="#fig-${t}" x="${(W - fw) / 2}" y="-1" width="${fw}" height="17" style="color:${col};animation-delay:-${((i * 7 + k * 3) % 13) / 5}s"/>
           <rect class="plate" x="0" y="15" width="${W}" height="8" rx="2" fill="${col}"/>
           <text class="cnum" x="${W / 2}" y="21.2">${n}</text></g>`;
       });
@@ -1627,13 +1635,34 @@
     S.fxTimer = setTimeout(() => { fx.innerHTML = ''; }, ms);
   }
 
-  // eine kleine Figur läuft den Pfad entlang (wippt beim Gehen)
-  const token = (d, col, fig, dur, delay = 0) => {
+  // eine kleine Figur läuft den Pfad entlang (wippt beim Gehen, Beine und Räder bewegen sich)
+  const token = (d, col, fig, dur, delay = 0, ox = 0, oy = 0, bob = 0.22) => {
     const fw = FIG_W[fig] || 12;
-    return `<g visibility="hidden"><g class="walker"><use href="#fig-${fig}" x="${-fw / 2 - 1}" y="-19" width="${fw + 2}" height="20" style="color:${col}"/></g>
+    return `<g visibility="hidden"><g transform="translate(${ox} ${oy})"><g class="walker" style="animation-duration:${bob}s"><use href="#fig-${fig}" x="${-fw / 2 - 1}" y="-19" width="${fw + 2}" height="20" style="color:${col}"/></g></g>
       <set attributeName="visibility" to="visible" begin="indefinite" data-delay="${delay}"/>
       <animateMotion dur="${dur}s" begin="indefinite" fill="freeze" path="${d}" calcMode="spline" keyTimes="0;1" keySplines=".45 0 .55 1" data-delay="${delay}"/></g>`;
   };
+
+  const ARROW = `<path d="M-4.6 0 H3.4" stroke="#2b1d12" stroke-width="1.5"/><path d="M-4.6 0 H3.4" stroke="#c08a50" stroke-width=".7"/><path d="M-4.6 0 l-1.2 -1.2 M-4.6 0 l-1.2 1.2" stroke="#f1e7cf" stroke-width=".7"/><path d="M3 -1.5 L5.8 0 L3 1.5 Z" fill="#d4dbe1" stroke="#2b1d12" stroke-width=".4"/>`;
+  // Staubwolke: n Bällchen fliegen auseinander
+  const puffs = (x, y, n, delay, r = 10) => Array.from({ length: n }, (_, k) => {
+    const a = k / n * Math.PI * 2 + 0.4;
+    return `<circle class="fx-puff" cx="${x}" cy="${y}" r="${2 + (k % 2)}" style="--tx:${(Math.cos(a) * r).toFixed(1)}px;--ty:${(Math.sin(a) * r * 0.5 - 2).toFixed(1)}px;animation-delay:${(delay + (k % 3) * 0.05).toFixed(2)}s"/>`;
+  }).join('');
+  // Geschosse (Steine oder Pfeile) fliegen im Bogen von a nach b
+  function shots(kind, x1, y1, x2, y2, n, delay) {
+    let h = '';
+    for (let k = 0; k < n; k++) {
+      const ox = Math.sin(k * 2.1) * 5, oy = Math.cos(k * 1.7) * 4, tx = x2 + Math.cos(k * 2.6) * 6, ty = y2 + Math.sin(k * 1.9) * 4;
+      const mx = (x1 + ox + tx) / 2, my = Math.min(y1, ty) - Math.hypot(tx - x1, ty - y1) * (kind === 'stone' ? 0.55 : 0.4);
+      const d = `M${(x1 + ox).toFixed(1)} ${(y1 + oy).toFixed(1)} Q${mx.toFixed(1)} ${my.toFixed(1)} ${tx.toFixed(1)} ${ty.toFixed(1)}`;
+      const art = kind === 'stone' ? '<circle r="2" fill="#a99f89" stroke="#2b1d12" stroke-width=".6"/><circle cx="-.6" cy="-.6" r=".6" fill="#e9e2cf"/>' : ARROW;
+      h += `<g visibility="hidden">${art}<set attributeName="visibility" to="visible" begin="indefinite" data-delay="${(delay + k * 0.12).toFixed(2)}"/>
+        <animateMotion dur="${kind === 'stone' ? 0.65 : 0.5}s" begin="indefinite" fill="freeze" path="${d}" rotate="auto" calcMode="spline" keyTimes="0;1" keySplines=".3 0 .7 1" data-delay="${(delay + k * 0.12).toFixed(2)}"/>
+        <set attributeName="visibility" to="hidden" begin="indefinite" data-delay="${(delay + k * 0.12 + (kind === 'stone' ? 0.65 : 0.5)).toFixed(2)}"/></g>`;
+    }
+    return h;
+  }
 
   // Pfeilhagel: viele kleine Pfeile fliegen in hohem Bogen auf das Ziel
   function playVolley(v) {
@@ -1644,9 +1673,10 @@
       const x1 = f.lx + +ox, y1 = f.ly + +oy, x2 = t.lx + (Math.cos(k * 2.6) * 10), y2 = t.ly + (Math.sin(k * 1.9) * 8);
       const mx = (x1 + x2) / 2, my = Math.min(y1, y2) - Math.hypot(x2 - x1, y2 - y1) * 0.45;
       const d = `M${x1} ${y1} Q${mx} ${my} ${x2.toFixed(1)} ${y2.toFixed(1)}`;
-      html += `<g><path d="M-4 0 L3 0" stroke="#3b2a1a" stroke-width="1"/><path d="M3 -1.4 L5.5 0 L3 1.4 Z" fill="#d6dbe0"/>
+      html += `<g>${ARROW}
         <animateMotion dur="0.7s" begin="indefinite" fill="freeze" path="${d}" rotate="auto" keyPoints="0;1" keyTimes="0;1" calcMode="spline" keySplines=".3 0 .7 1"/></g>`;
     }
+    html += puffs(t.lx, t.ly + 2, 7, 0.72, 12);
     html += `<text class="fx-dmg" x="${t.lx}" y="${t.ly - 30}">${v.killed ? '−' + v.killed : 'daneben'}</text>`;
     startFx(html, 2000);
     Sound.play('volley');
@@ -1658,7 +1688,8 @@
     // kleine Kolonne: bis zu drei Figuren hintereinander, mit Staub an den Füßen
     const n = Math.min(3, Math.max(1, Math.ceil((m.n || 1) / 3)));
     let html = `<path class="fx-arrow march" d="${d}" stroke="#4ade80"/>`;
-    for (let k = n - 1; k >= 0; k--) html += token(d, col, m.fig || 'w', 1.15, k * 0.16);
+    const OFF = [[0, 0], [-2.6, 1.8], [2.4, -1.4]];
+    for (let k = n - 1; k >= 0; k--) html += token(d, col, m.fig || 'w', 1.15 + k * 0.05, k * 0.16, OFF[k][0], OFF[k][1], 0.21 + k * 0.03);
     const t = C[m.to];
     html += Array.from({ length: 6 }, (_, k) => `<circle class="fx-puff" cx="${t.lx}" cy="${t.ly + 2}" r="${2 + (k % 2)}" style="--tx:${(Math.cos(k * 1.05) * 10).toFixed(1)}px;--ty:${(Math.sin(k * 1.05) * 4 - 2).toFixed(1)}px;animation-delay:${(1.1 + n * 0.16).toFixed(2)}s"/>`).join('');
     startFx(html, 2300);
@@ -1679,8 +1710,8 @@
     const nA = Math.min(3, Math.max(1, Math.ceil((b.an || 3) / 3))), nD = b.dfig ? Math.min(3, Math.max(1, Math.ceil((b.dn || 1) / 3))) : 0;
     const fig = (t, col, x, y, cls, flip, vars) => {
       const fw = FIG_W[t] || 12, h = t === 'dr' ? 22 : 18;
-      return `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)})"><g class="bt ${cls}" style="${vars}"><g transform="scale(${flip} 1)">
-        <use href="#fig-${t}" x="${(-fw * h / 17 / 2).toFixed(1)}" y="${-h}" width="${(fw * h / 17).toFixed(1)}" height="${h}" style="color:${col}"/></g></g></g>`;
+      return `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)})"><g class="bt ${cls}" style="${vars}"><g transform="scale(${flip} 1)"><g class="hurt">
+        <use href="#fig-${t}" x="${(-fw * h / 17 / 2).toFixed(1)}" y="${-h}" width="${(fw * h / 17).toFixed(1)}" height="${h}" style="color:${col}"/></g></g></g></g>`;
     };
     let html = '';
     // eroberte Provinz färbt sich am Ende
@@ -1694,15 +1725,19 @@
     for (let k = 0; k < nD; k++) {
       const off = (k - (nD - 1) / 2) * 8;
       const x = x2 + dx * 6 + px * off, y = y2 + dy * 6 + py * off + 4;
-      html += fig(b.dfig, dcol, x, y, `def ${b.won ? 'lose' : 'win'}`, -flipA, `--lx:${(dx * 3).toFixed(1)}px;--ly:${(dy * 3).toFixed(1)}px;animation-delay:0s,${0.75 + k * 0.07}s,1.95s`);
+      html += fig(b.dfig, dcol, x, y, `def ${b.won ? 'lose' : 'win'}`, -flipA, `--lx:${(dx * 3).toFixed(1)}px;--ly:${(dy * 3).toFixed(1)}px;--swing-delay:${0.75 + k * 0.07}s;--hit-delay:${0.86 + k * 0.07}s;animation-delay:0s,${0.75 + k * 0.07}s,1.95s`);
     }
     // Angreifer marschieren aus ihren Provinzen herein
     for (let k = 0; k < nA; k++) {
       const src = C[froms[k % froms.length]], off = (k - (nA - 1) / 2) * 8;
       const x = x2 - dx * (nD ? 8 : 0) + px * off, y = y2 - dy * (nD ? 8 : 0) + py * off + 4;
       html += fig(b.fig || 'w', acol, x, y, `att ${b.won ? 'win' : 'lose'}${nD ? '' : ' free'}`, flipA,
-        `--sx:${(src.lx - x).toFixed(1)}px;--sy:${(src.ly - y).toFixed(1)}px;--lx:${(-dx * 3).toFixed(1)}px;--ly:${(-dy * 3).toFixed(1)}px;--ax:${(dx * 9).toFixed(1)}px;--ay:${(dy * 9).toFixed(1)}px;animation-delay:${k * 0.08}s,${0.75 + k * 0.07}s,1.95s`);
+        `--sx:${(src.lx - x).toFixed(1)}px;--sy:${(src.ly - y).toFixed(1)}px;--lx:${(-dx * 3).toFixed(1)}px;--ly:${(-dy * 3).toFixed(1)}px;--ax:${(dx * 9).toFixed(1)}px;--ay:${(dy * 9).toFixed(1)}px;--swing-delay:${0.75 + k * 0.07}s;--hit-delay:${0.86 + k * 0.07}s;animation-delay:${k * 0.08}s,${0.75 + k * 0.07}s,1.95s`);
     }
+    // Belagerung und Fernkampf: Steine der Katapulte bzw. Pfeile der Bogenschützen fliegen voraus
+    const src0 = C[froms[0]], aim = K.isCity(to) ? [x2, y2 - 24] : [x2 + dx * 4, y2 - 6];
+    if (b.fig === 'c' || b.fig === 't') html += shots('stone', src0.lx, src0.ly - 10, aim[0], aim[1], 3, 0.05) + puffs(aim[0], aim[1] + 4, 8, 0.7, 12);
+    else if (b.fig === 'a' || b.fig === 'l') html += shots('arrow', src0.lx, src0.ly - 8, x2 + dx * 5, y2 - 4, 5, 0.1);
     // Funken und Staub, wo sich die Reihen treffen
     if (nD) {
       const mx = x2 - dx * 1, my = y2 - dy * 1 - 6;
@@ -1714,12 +1749,15 @@
         const a = k / 10 * Math.PI * 2, r = 12 + (k % 3) * 5;
         return `<circle class="fx-puff" cx="${mx}" cy="${my + 8}" r="${2 + (k % 2)}" style="--tx:${(Math.cos(a) * r).toFixed(1)}px;--ty:${(Math.sin(a) * r * 0.5).toFixed(1)}px;animation-delay:${(0.75 + (k % 4) * 0.25).toFixed(2)}s"/>`;
       }).join('');
-      html += `<text class="bt-clash" x="${mx}" y="${my - 12}">⚔️</text>`;
+      html += `<g transform="translate(${mx.toFixed(1)} ${(my + 2).toFixed(1)})"><path class="bt-spark bt-burst" d="M0 -9 L2.2 -2.6 L9 -3.4 L3.4 1 L6.6 7.4 L0 3.8 L-6.6 7.4 L-3.4 1 L-9 -3.4 L-2.2 -2.6 Z"/></g>
+        <g transform="translate(${mx.toFixed(1)} ${(my - 14).toFixed(1)})"><g class="bt-clash"><use href="#fx-swords" x="-7" y="-7" width="14" height="14"/></g></g>`;
     }
     if (b.won) {
-      html += `<g class="fx-flagwrap late" transform="translate(${x2 + 8} ${y2 - 6})"><g class="fx-flag">
-          <line x1="0" y1="0" x2="0" y2="-24" stroke="#3b2a1a" stroke-width="1.6"/><circle cx="0" cy="-24.5" r="1.5" fill="#f5c542"/>
-          <path class="fx-cloth" d="M0.8 -23 Q8 -25 15 -21 Q9 -18 0.8 -15 Z" fill="${acol}" stroke="rgba(0,0,0,.4)" stroke-width=".5"/></g></g>
+      html += `<circle class="fx-ring late" cx="${x2 + 8}" cy="${y2 - 6}" r="10"/><circle class="fx-ring r2 late" cx="${x2 + 8}" cy="${y2 - 6}" r="16"/>
+        <g class="fx-flagwrap late" transform="translate(${x2 + 8} ${y2 - 6})"><g class="fx-flag">
+          <line x1="0" y1="0" x2="0" y2="-24" stroke="#2b1d12" stroke-width="2.4" stroke-linecap="round"/><line x1="0" y1="0" x2="0" y2="-24" stroke="#8f5a30" stroke-width="1.2"/>
+          <circle cx="0" cy="-24.6" r="1.6" fill="#f2c53d" stroke="#2b1d12" stroke-width=".5"/>
+          <path class="fx-cloth" d="M0.8 -23 Q8 -25 15 -21 Q9 -18 0.8 -15 Z" fill="${acol}" stroke="#2b1d12" stroke-width=".7" stroke-linejoin="round"/></g></g>
         <text class="fx-text win late" x="${x2}" y="${y2 + 30}">Erobert!</text>`;
     } else {
       html += `<g class="fx-shield late"><use href="#crest" x="${x2 - 9}" y="${y2 - 40}" width="18" height="20"/></g>
@@ -2745,7 +2783,7 @@
 
   function openGift(t) {
     const st = S.state, me = st.players[S.me], o = $('#confirm');
-    const rows = [['gold', '<i class="coin"></i> Gold', me.gold], ...K.RKEYS.map(k => [k, `${K.RES[k].icon} ${K.RES[k].name}`, me[k] || 0])];
+    const rows = [['gold', `${COIN} Gold`, me.gold], ...K.RKEYS.map(k => [k, `${RICO(k)} ${K.RES[k].name}`, me[k] || 0])];
     o.innerHTML = `<div class="modal center gift"><h2>🎁 Geschenk an ${pName(t)}</h2>
       <p class="tag">Hilf Verbündeten – oder kauf dir Frieden.</p>
       <div class="giftrows">${rows.map(([k, l, max]) => `<label class="grow-row"><span>${l}</span>
@@ -3127,6 +3165,15 @@
   // ---------- Was ist neu? ----------
   // Nach jedem Update erscheint einmal ein Fenster mit den Neuigkeiten (neueste zuerst).
   const CHANGELOG = [
+    { v: '32', title: 'Neue Grafik und lebendige Animationen', items: [
+      '🎨 Alles im gleichen Stil neu gezeichnet: Gebäude, Burgen, Hauptstadt, Mauern, Dörfer und alle Einheiten haben jetzt einen warmen dunklen Umriss, Licht von links oben und klare Formen – auch klein gut zu erkennen. Fahnen an Gebäuden zeigen deine Reichsfarbe.',
+      '🌳 Die Karte lebt: Bäume wiegen sich im Wind, auf dem Meer glitzern Wellen, aus Dörfern und der Hauptstadt steigt Rauch, die Säge im Sägewerk dreht sich, Fackeln flackern, das Boot im Hafen schaukelt und Märkte und Tempel glimmen.',
+      '🚶 Einheiten bewegen sich richtig: Soldaten laufen mit den Beinen, Ritter galoppieren, die Räder der Katapulte drehen sich. Deine bereiten Truppen atmen leicht – so siehst du sofort, wer noch ziehen kann.',
+      '⚔️ Kämpfe mit mehr Wucht: Sie schlagen zu, werden getroffen und fallen, die Sieger jubeln. Katapulte schleudern Steine, Bogenschützen schießen Pfeile voraus, beim Zusammenprall blitzen gekreuzte Schwerter auf und beim Erobern weht die neue Fahne mit einer Schockwelle.',
+      '🐉 Jedes Monster bewegt sich anders: Der Drache schlägt mit den Flügeln und speit Feuer, der Wolf lauert und hechelt, der Troll verlagert schwer sein Gewicht und der Sandwurm taucht in den Sand ab und wieder auf.',
+      '💰 Gold, Wissen, Nahrung, Holz und Stein haben eigene gezeichnete Symbole.',
+      '✅ Nur die Grafik ist neu – Regeln, Spielstände und das Online-Spiel bleiben gleich. Wer am Gerät „Bewegung reduzieren“ eingestellt hat, bekommt eine ruhige Karte.',
+    ] },
     { v: '31', title: 'Neue Monster-Grafiken', items: [
       '🐉 Wolf, Troll, Drache und Sandwurm sind jetzt richtig gemalte Bilder statt einfacher Zeichnungen – mit SpriteCook erstellt.',
       '🧌 Der Troll atmet auf der Karte und bewegt seine Keule. Die anderen Monster atmen und wippen weiter wie bisher.',
