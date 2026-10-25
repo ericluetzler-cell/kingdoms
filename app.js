@@ -17,7 +17,7 @@
     return { ...B, icon: b === 'fort' ? '#castle' : '#b-' + b, where: B.coast ? 'an der Küste' : B.on.length >= 5 ? 'überall' : B.on.map(t => K.TERRAIN[t].name).join(', ') };
   }
   const newSeed = () => (Math.random() * 2 ** 32) >>> 0;
-  const APP_VERSION = '32';
+  const APP_VERSION = '33';
   const NET_V = 3;
   // nur zum Testen: mit ?debug in der Adresse ist der Spielzustand in der Konsole erreichbar
   const DEBUG = new URLSearchParams(location.search).has('debug');
@@ -52,6 +52,8 @@
   if (DEBUG) window.__kingdoms = { S, render: () => render(), mini: () => Mini };
 
   function show(id) { document.querySelectorAll('.screen').forEach(e => { e.hidden = e.id !== id; }); const m = document.querySelector('#menuSound'); if (m) m.hidden = id === 'game'; }
+  // Handy: die Ton-Knöpfe im Menü weichen beim Scrollen, damit sie keine Eingabefelder verdecken
+  document.querySelectorAll('.title-screen').forEach(s => s.addEventListener('scroll', () => $('#menuSound').classList.toggle('away', s.scrollTop > 40), { passive: true }));
 
   let toastTimer;
   function toast(msg) {
@@ -307,9 +309,25 @@
     $('#research').hidden = true;
     $('#side').classList.remove('open');
     document.title = 'Kingdoms';
+    keepAwake(false);
   }
 
   function toMenu() { resetSession(); show('menu'); menuPanel('main'); renderResume(); setTimeout(() => checkVersion(), 500); }
+
+  // Online-Spiel auf dem Handy: der Bildschirm bleibt an, damit die Verbindung beim Warten nicht abreißt
+  let wakeLock = null, wakeWanted = false;
+  function keepAwake(on) {
+    wakeWanted = on;
+    if (!navigator.wakeLock) return;
+    if (on && !wakeLock && document.visibilityState === 'visible') {
+      wakeLock = navigator.wakeLock.request('screen').then(l => {
+        if (!wakeWanted) { l.release(); wakeLock = null; return null; }
+        l.addEventListener('release', () => { wakeLock = null; });
+        return l;
+      }).catch(() => { wakeLock = null; return null; });
+    } else if (!on && wakeLock) { const p = wakeLock; wakeLock = null; p.then(l => l && l.release()).catch(() => {}); }
+  }
+  document.addEventListener('visibilitychange', () => { if (wakeWanted) keepAwake(true); });
 
   // ---------- Weltenschmiede: eigene Welten gestalten ----------
 
@@ -1076,7 +1094,33 @@
 
   let view = { x: 0, y: 0, w: 100, h: 100 };
   const dockSide = () => { const d = $('#actionbar').getBoundingClientRect(); return d.width && d.width < window.innerWidth * 0.6 && d.top < window.innerHeight / 3; };
+  // Bildschirmränder, die von Kopfzeile, Leiste, Seitenleiste oder (auf Wunsch) vom Infofeld verdeckt sind
+  function viewInsets(r, withInfo) {
+    const side = dockSide(), hud = $('.hud-top').getBoundingClientRect(), dock = $('#actionbar').getBoundingClientRect();
+    const ins = { top: Math.max(0, hud.bottom - r.top), bottom: 0, left: 0, right: 0 };
+    if (side) ins.right = dock.width;
+    else if (dock.height) ins.bottom = Math.max(0, r.bottom - dock.top);
+    const sp = $('#side');
+    if (r.width >= 860 && sp.offsetWidth) ins.right = Math.max(ins.right, r.right - sp.getBoundingClientRect().left);
+    if (withInfo && r.width < 860 && !side && !$('#info').hidden) { const ib = $('#info').getBoundingClientRect(); if (ib.height) ins.bottom = Math.max(ins.bottom, r.bottom - ib.top); }
+    ins.top = Math.min(ins.top, r.height * 0.4); ins.bottom = Math.min(ins.bottom, r.height * 0.5);
+    return ins;
+  }
+  // die Karte nicht beliebig weit über ihren Rand hinaus schieben – sonst sieht man auf dem Handy vor allem leeres Meer
+  function clampView() {
+    const geo = S.state && S.state.geo, r = $('#mapwrap').getBoundingClientRect();
+    if (!geo || !r.width) return;
+    const ins = viewInsets(r), k = r.width / view.w, pad = geo.s * 2.5;
+    // größere Karte: nicht über den Rand hinaus; kleinere Karte: bleibt ganz im Bild
+    const fit = (pos, a, b, full, len) => {
+      const lo = -pad - a / k, hi = len + pad - (full - b) / k;
+      return Math.min(Math.max(pos, Math.min(lo, hi)), Math.max(lo, hi));
+    };
+    view.x = fit(view.x, ins.left, ins.right, r.width, geo.W);
+    view.y = fit(view.y, ins.top, ins.bottom, r.height, geo.H);
+  }
   function applyView() {
+    clampView();
     svgEl().setAttribute('viewBox', `${view.x} ${view.y} ${view.w} ${view.h}`);
     if (S.state) svgEl().classList.toggle('zoomin', view.w < S.state.geo.W * 0.32);
   }
@@ -1107,16 +1151,15 @@
     view.x = wx - fx * view.w; view.y = wy - fy * view.h;
     applyView();
   }
-  // Handy: ausgewählte Provinz nicht unter HUD, Infofeld oder Leiste verstecken
+  // ausgewählte oder umkämpfte Provinz nicht unter Kopfzeile, Leiste oder Infofeld verstecken
   function keepVisible(i) {
     const r = $('#mapwrap').getBoundingClientRect(), c = S.state.cells[i];
-    if (!r.width || r.width >= 860 || !c) return;
-    const side = dockSide(), top = side ? 56 : 110, bottom = side ? r.height - 12 : r.height - ($('#actionbar').offsetHeight || 0) - 12;
-    const rightEdge = side ? $('#actionbar').getBoundingClientRect().left : r.width;
+    if (!r.width || !c) return;
+    const ins = viewInsets(r, true), top = ins.top, bottom = r.height - ins.bottom, left = ins.left, right = r.width - ins.right;
     const sy = (c.ly - view.y) / view.h * r.height, sx = (c.lx - view.x) / view.w * r.width;
     let dy = 0, dx = 0;
     if (sy < top + 30 || sy > bottom - 30) dy = sy - (top + bottom) / 2;
-    if (sx < 30 || sx > rightEdge - 30) dx = sx - rightEdge / 2;
+    if (sx < left + 30 || sx > right - 30) dx = sx - (left + right) / 2;
     if (!dx && !dy) return;
     const fromX = view.x, fromY = view.y, toX = view.x + dx / r.width * view.w, toY = view.y + dy / r.height * view.h, t0 = performance.now();
     const step = now => {
@@ -1155,7 +1198,8 @@
   (() => {
     const wrap = $('#mapwrap'), pts = new Map();
     let start = null, dragged = false, pinch = null, unitDrag = null;
-    const provAt = (x, y) => { const el = document.elementFromPoint(x, y); const g = el && el.closest && el.closest('.prov'); return g ? +g.dataset.i : -1; };
+    // auch ein Tipp auf die Figuren einer Provinz zählt als Tipp auf die Provinz
+    const provAt = (x, y) => { const el = document.elementFromPoint(x, y); const g = el && el.closest && el.closest('.prov, .ctr'); return g ? +g.dataset.i : -1; };
     wrap.addEventListener('contextmenu', e => {
       e.preventDefault();
       if (!S.state || S.sel < 0) return;
@@ -1164,6 +1208,7 @@
     });
     wrap.addEventListener('pointerdown', e => {
       if (e.button === 2) return;
+      if (innerWidth <= 860 && $('#side').classList.contains('open')) { $('#side').classList.remove('open'); return; }
       pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
       try { wrap.setPointerCapture(e.pointerId); } catch (_) {}
       const ctr = e.target.closest && e.target.closest('.ctr');
@@ -1247,13 +1292,17 @@
     if (!S.state) return;
     const st = S.state;
     setupMap();
+    keepAwake((S.role === 'host' || S.role === 'guest') && !st.over);
     if (!$('#info').hidden && S.infoCell >= 0 && (S.pin >= 0 || !canHover) && st.cells[S.infoCell]) showInfo(S.infoCell);
     const turnKey = st.round + '-' + st.turn;
     if (turnKey !== S.turnKey) {
       S.turnKey = turnKey;
       if (myTurn()) {
         Object.assign(S, { mode: st.players[S.me].gold >= 2 ? 'recruit' : 'army', sel: -1, selDivs: null, split: null });
-        if (!(S.tut && st.round === 1)) { splash(`Dein Zug<small>Runde ${st.round}</small>`); Sound.play('turn'); }
+        if (!(S.tut && st.round === 1)) {
+          splash(`Dein Zug<small>Runde ${st.round}</small>`); Sound.play('turn');
+          if (S.role !== 'local' && Sound.sfx && navigator.vibrate) navigator.vibrate(70);
+        }
         if (Mini.isOpen()) { Mini.close(); toast('⚔️ Du bist dran! Das Minispiel wartet auf dich.'); }
         // Rundenbericht: was seit deinem letzten Zug passiert ist (Angriffe auf dich, Bündnisse, Vernichtungen)
         if (S.lastLogN != null) {
@@ -1771,6 +1820,7 @@
     else setTimeout(() => Sound.play('march'), 100);
     setTimeout(() => { const svg = svgEl(); svg.classList.remove('shake'); void svg.getBoundingClientRect(); svg.classList.add('shake'); }, 800);
     const meInvolved = attacker === S.me || b.prev === S.me;
+    if (meInvolved) keepVisible(b.to);
     setTimeout(() => Sound.play(b.won === (attacker === S.me) || !meInvolved && b.won ? 'win' : 'lose'), 2000);
 
     setTimeout(() => {
@@ -1809,7 +1859,7 @@
       extra = `<div class="chance ${cls}"><div>Angriff <b>${o.A.toFixed(1)}</b> gegen Verteidigung <b>${o.D.toFixed(1)}</b></div>
         <div class="bar"><i style="width:${p}%"></i></div><div>Siegchance <span class="pct">${p} %</span> <span class="tag">mit deiner Auswahl</span></div></div>`;
     } else if (truceProtected(i) && c.owner !== S.me) extra = `<div class="tag">🕊️ Friedenszeit bis Runde ${st.truce}</div>`;
-    box.innerHTML = `<div class="ihead"><b>${esc(c.name)}</b><span>${c.owner >= 0 ? pName(c.owner) : '<span class="tag">Neutral</span>'}</span></div>
+    box.innerHTML = `<div class="ihead"><b>${esc(c.name)}</b><span>${c.owner >= 0 ? pName(c.owner) : '<span class="tag">Neutral</span>'}${canHover ? '' : '<button class="ghost iclose" data-unpin title="Schließen">✕</button>'}</span></div>
       <div class="chips">${chips}</div>
       <div class="tag">Ertrag pro Runde: ${coin('+' + y.gold)}${y.sci ? ' ' + scroll('+' + y.sci) : ''}${K.RKEYS.filter(k => y[k]).map(k => ' ' + resAmt(k, '+' + y[k])).join('')}${c.owner < 0 ? ' (nach Eroberung)' : ''}</div>
       ${c.hut ? '<div class="tag">Erobern bringt Gold, Wissen oder Rohstoffe</div>' : ''}
@@ -2031,6 +2081,7 @@
   function onCell(i, dropped) {
     const st = S.state;
     if (!canHover || !myTurn()) showInfo(i);
+    if (!canHover && S.mode !== 'army') keepVisible(i);
     if (!myTurn()) return;
     const c = st.cells[i], gold = st.players[S.me].gold;
     // am PC: Klick auf eine eigene Provinz heftet das Infofeld an – dort kann man direkt bauen
@@ -2819,6 +2870,7 @@
     else if (d.e) sendChat(d.e);
   });
   $('#btnSide').onclick = () => $('#side').classList.toggle('open');
+  $('#sideClose').onclick = () => $('#side').classList.remove('open');
   $('#report').addEventListener('click', () => { $('#report').hidden = true; });
 
   function renderLog() {
@@ -3165,6 +3217,15 @@
   // ---------- Was ist neu? ----------
   // Nach jedem Update erscheint einmal ein Fenster mit den Neuigkeiten (neueste zuerst).
   const CHANGELOG = [
+    { v: '33', title: 'Besser spielen auf dem Handy', items: [
+      '🗺️ Die Karte bleibt im Bild: Sie lässt sich nicht mehr weit ins leere Meer schieben und startet so, dass möglichst viel Land zu sehen ist.',
+      '👆 Ein Tipp auf die Figuren einer Provinz wählt jetzt die Provinz – vorher passierte bei fremden Figuren gar nichts. Auch Truppen auf eine gegnerische Figur ziehen klappt jetzt.',
+      '📋 Die Infotafel hat ein ✕ zum Schließen, und die angetippte Provinz rutscht über die Tafel, statt darunter zu verschwinden. Hinweise erscheinen oben statt über der Tafel.',
+      '⚔️ Greift dich jemand an einer Stelle an, die du gerade nicht siehst, schwenkt die Karte automatisch dorthin.',
+      '📱 Die Leiste unten ist flacher, die Reiche-Liste schließt mit ✕ oder einem Tipp auf die Karte, im Querformat sind alle Rohstoffe zu sehen, „Spiel starten“ ist im Menü immer erreichbar und die Provinznamen sind etwas größer.',
+      '🔔 Im Online-Spiel bleibt der Bildschirm an, damit die Verbindung nicht abreißt, und das Handy vibriert kurz, wenn du dran bist.',
+      '🎨 Die gewählte Reichsfarbe ist im Menü wieder richtig zu sehen.',
+    ] },
     { v: '32', title: 'Neue Grafik und lebendige Animationen', items: [
       '🎨 Alles im gleichen Stil neu gezeichnet: Gebäude, Burgen, Hauptstadt, Mauern, Dörfer und alle Einheiten haben jetzt einen warmen dunklen Umriss, Licht von links oben und klare Formen – auch klein gut zu erkennen. Fahnen an Gebäuden zeigen deine Reichsfarbe.',
       '🌳 Die Karte lebt: Bäume wiegen sich im Wind, auf dem Meer glitzern Wellen, aus Dörfern und der Hauptstadt steigt Rauch, die Säge im Sägewerk dreht sich, Fackeln flackern, das Boot im Hafen schaukelt und Märkte und Tempel glimmen.',
