@@ -895,6 +895,7 @@ kbd { display: inline-block; padding: .05rem .45rem; border-radius: 6px; border:
 /* Monster auf der Karte: atmen, Drache speit ab und zu Feuer */
 #units .ctr.monster .fig { animation: mbreath 2.4s ease-in-out infinite; }
 #units .ctr.m-sw .fig { animation: worm 3.2s ease-in-out infinite; }
+#units .ctr.m-tr .fig { animation: none; } /* Troll atmet schon im Bild (Spritesheet) */
 @keyframes mbreath { 50% { transform: translateY(-.8px) scale(1.03, .98); } }
 @keyframes worm { 0%, 100% { transform: translateY(1px); } 50% { transform: translateY(-1.5px) rotate(-3deg); } }
 .drfire { transform-box: fill-box; transform-origin: left center; animation: drfire 2.4s ease-in-out infinite; }

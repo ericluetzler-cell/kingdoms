@@ -1,0 +1,23 @@
+{
+  "sheet": {
+    "asset_id": "4f55e632-a0e2-46eb-9d7e-8252f05e7a29"
+  },
+  "troll_upload": {
+    "asset_id": "01c081b7-2cb1-4ed5-98a4-2e6368e4da01"
+  },
+  "troll_idle": {
+    "asset_id": "5cbd951b-7e7b-4f1b-8fb7-dc9e12aaa9d9"
+  },
+  "files": {
+    "dragon.webp": "855c551e32df",
+    "troll-idle-0.webp": "c2743d9ba5ef",
+    "troll-idle-1.webp": "e3c1a98b03b7",
+    "troll-idle-2.webp": "e720dce49be7",
+    "troll-idle-3.webp": "80f1b0906e41",
+    "troll-idle-4.webp": "c7328e488bad",
+    "troll-idle-5.webp": "02e7b2fcef9b",
+    "troll.webp": "724150dffb4a",
+    "wolf.webp": "0178f6a56fa3",
+    "worm.webp": "efae96164e6d"
+  }
+}

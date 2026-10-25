@@ -17,7 +17,7 @@
     return { ...B, icon: b === 'fort' ? '#castle' : '#b-' + b, where: B.coast ? 'an der Küste' : B.on.length >= 5 ? 'überall' : B.on.map(t => K.TERRAIN[t].name).join(', ') };
   }
   const newSeed = () => (Math.random() * 2 ** 32) >>> 0;
-  const APP_VERSION = '30';
+  const APP_VERSION = '31';
   const NET_V = 3;
   // nur zum Testen: mit ?debug in der Adresse ist der Spielzustand in der Konsole erreichbar
   const DEBUG = new URLSearchParams(location.search).has('debug');
@@ -1551,7 +1551,7 @@
   }
 
   // Divisionen wie bei Hearts of Iron: eine Figur je Division (stärkste Einheit) auf einem Sockel mit der Stärke
-  const FIG_W = { w: 12, a: 12, p: 12, l: 12, k: 17, c: 17, h: 17, t: 19, wo: 17, tr: 14, dr: 24, sw: 17 };
+  const FIG_W = { w: 12, a: 12, p: 12, l: 12, k: 17, c: 17, h: 17, t: 19, wo: 20, tr: 17, dr: 24, sw: 17 };
   // geplante Märsche: gestrichelter Weg mit Fähnchen am Ziel (nur die eigenen)
   function renderOrders() {
     const st = S.state, C = st.cells;
@@ -3127,6 +3127,11 @@
   // ---------- Was ist neu? ----------
   // Nach jedem Update erscheint einmal ein Fenster mit den Neuigkeiten (neueste zuerst).
   const CHANGELOG = [
+    { v: '31', title: 'Neue Monster-Grafiken', items: [
+      '🐉 Wolf, Troll, Drache und Sandwurm sind jetzt richtig gemalte Bilder statt einfacher Zeichnungen – mit SpriteCook erstellt.',
+      '🧌 Der Troll atmet auf der Karte und bewegt seine Keule. Die anderen Monster atmen und wippen weiter wie bisher.',
+      '🔎 Auch die kleinen Monster-Symbole in den Listen zeigen die neuen Bilder.',
+    ] },
     { v: '30', title: 'Monster und Kampf-Animationen', items: [
       '🐺 Neue Monster: ein zotteliger Wolf, ein Troll mit Keule, ein feuerspeiender roter Drache und ein Sandwurm mit Zahnkranz.',
       '⚔️ Einmarsch mit Gefecht: Deine Truppen marschieren in die Provinz, die Verteidiger stellen sich, es fliegen Funken – dann fallen die Verlierer und die Sieger hissen ihre Fahne.',
