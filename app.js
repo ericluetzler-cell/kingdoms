@@ -17,7 +17,7 @@
     return { ...B, icon: b === 'fort' ? '#castle' : '#b-' + b, where: B.coast ? 'an der Küste' : B.on.length >= 5 ? 'überall' : B.on.map(t => K.TERRAIN[t].name).join(', ') };
   }
   const newSeed = () => (Math.random() * 2 ** 32) >>> 0;
-  const APP_VERSION = '34';
+  const APP_VERSION = '35';
   const NET_V = 3;
   // nur zum Testen: mit ?debug in der Adresse ist der Spielzustand in der Konsole erreichbar
   const DEBUG = new URLSearchParams(location.search).has('debug');
@@ -809,15 +809,16 @@
   // Gastgeber wirft jemanden raus: in der Lobby verschwindet er, im Spiel übernimmt die KI sein Reich
   function kickPlayer(cid) {
     const c = S.conns.get(cid);
-    if (c && c.open) c.send({ t: 'err', msg: 'Du wurdest vom Gastgeber aus dem Raum entfernt.', fatal: true });
+    if (c && c.open) c.send({ t: 'err', msg: S.state ? 'Du wurdest vom Gastgeber aus dem Spiel genommen. Bis du zurück bist, spielt die KI für dich. Über „🔌 Zurück in Raum“ kannst du wieder anfragen – der Gastgeber muss dich hineinlassen.' : 'Du wurdest vom Gastgeber aus dem Raum entfernt.', fatal: true });
     setTimeout(() => { try { if (c) c.close(); } catch { /* egal */ } }, 1500);
     S.conns.delete(cid);
     if (S.state) {
       const p = S.state.players.findIndex(x => x.cid === cid);
       if (p >= 0) {
-        Object.assign(S.state.players[p], { type: 'ai', level: 'medium', cid: null, away: false });
+        // Kicken ist keine Sperre: das Reich bleibt frei, der Gastgeber kann den Spieler wieder hineinlassen
+        Object.assign(S.state.players[p], { type: 'ai', level: 'medium', cid: null, away: true });
         if (S.seats) S.seats[p] = null;
-        S.state.log.push({ m: '👢 {0} wurde vom Gastgeber entfernt – die KI übernimmt.', ps: [p] });
+        S.state.log.push({ m: '👢 {0} wurde vom Gastgeber herausgenommen – die KI spielt, bis der Gastgeber {0} wieder hineinlässt.', ps: [p] });
       }
       afterChange();
     } else {
@@ -2379,7 +2380,7 @@
     const awayIds = st.players.map((x, i) => i).filter(i => i > 0 && st.players[i].away && st.players[i].alive);
     $('#proposals').innerHTML = reqs.map(r => `
       <div class="proposal join"><div>🔌 <b>${esc(r.name)}</b> möchte ins laufende Spiel.
-        <small class="tag">Nur wenn du sicher bist, wer das ist: Lass ihn ein Reich übernehmen, dessen Spieler die Verbindung verloren hat.</small></div>
+        <small class="tag">Nur wenn du sicher bist, wer das ist: Lass ihn ein Reich übernehmen, dessen Spieler weg ist (Verbindung verloren oder gekickt).</small></div>
         <div class="row">${awayIds.map(i => `<button data-jr="${r.id}" data-jp="${i}" class="primary">Als ${esc(st.players[i].name)}</button>`).join('')}<button data-jx="${r.id}">Ablehnen</button></div>
       </div>`).join('') + incoming.map(x => `
       <div class="proposal"><div>${x.kind === 'peace'
@@ -2920,7 +2921,7 @@
     const b = e.target.closest('button');
     if (!b) return;
     const d = b.dataset, st = S.state;
-    if (d.kick) { const p = st.players.find(x => x.cid === d.kick); if (p && await ask(`${esc(p.name)} aus dem Spiel werfen? Die KI übernimmt das Reich.`, '👢 Kicken')) kickPlayer(d.kick); return; }
+    if (d.kick) { const p = st.players.find(x => x.cid === d.kick); if (p && await ask(`${esc(p.name)} aus dem Spiel nehmen? Die KI spielt sein Reich weiter – du kannst ihn später wieder hineinlassen.`, '👢 Kicken')) kickPlayer(d.kick); return; }
     if (d.rename !== undefined) { renameRealm(); return; }
     if (d.offer) act({ type: 'propose', target: +d.to, kind: d.offer });
     else if (d.cancel && await ask(`Vertrag mit ${pName(+d.cancel)} kündigen? Er gilt noch bis zum Ende der nächsten Runde – danach dürft ihr euch angreifen.`, '📜 Kündigen')) act({ type: 'cancel', target: +d.cancel });
@@ -3280,6 +3281,9 @@
   // ---------- Was ist neu? ----------
   // Nach jedem Update erscheint einmal ein Fenster mit den Neuigkeiten (neueste zuerst).
   const CHANGELOG = [
+    { v: '35', title: 'Zurück nach dem Kicken', items: [
+      '👢 Wer gekickt wurde, kann wieder ins laufende Spiel: über „🔌 Zurück in Raum“ anfragen – der Gastgeber lässt ihn mit einem Tipp wieder in sein Reich.',
+    ] },
     { v: '34', title: 'Einfachere Bedienung', items: [
       '👆 Keine Modi mehr: Tippe eine eigene Provinz an – unten öffnet sich ihr Menü mit allem, was dort geht: Truppen ausbilden, Gebäude bauen, Armee auswählen.',
       '⚔️ Tippe eine Figur an, um die Armee zu wählen – grüne Provinzen sind Marschziele, rote Angriffsziele. Mit ✕ hebst du die Auswahl auf.',
