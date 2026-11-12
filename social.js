@@ -103,14 +103,19 @@
     refresh();
   }
   const claimable = () => TRACK.map((id, i) => i + 1).filter(t => t <= levelOf(P.xp) && !P.claimed.includes(t));
-  const myCos = () => { const c = {}; for (const s of SLOTS) if (P.eq[s]) c[s] = P.eq[s]; return c; };
+  // Admins (Firebase-Konto-IDs) bekommen das Admin-Abzeichen
+  const ADMINS = ['28jX2ODonzeq5bxWcvC8wL1z47L2'];
+  const isAdmin = () => !!(Cloud.user && ADMINS.includes(Cloud.user.uid));
+  const myCos = () => { const c = {}; for (const s of SLOTS) if (P.eq[s]) c[s] = P.eq[s]; if (isAdmin()) c.adm = 1; return c; };
   function cleanCos(c) {
     if (!c || typeof c !== 'object') return null;
     const o = {};
     for (const s of SLOTS) if (typeof c[s] === 'string' && CAT[s][c[s]] !== undefined) o[s] = c[s];
+    if (c.adm === 1) o.adm = 1;
     return Object.keys(o).length ? o : null;
   }
-  const titleHTML = c => (c && c.title && TITLES[c.title] ? `<small class="ptitle${c.title === 'welt' ? ' top' : ''}">${esc(TITLES[c.title])}</small>` : '');
+  const titleHTML = c => (c && c.adm ? '<small class="padm" title="Admin von Kingdoms">🛡️ Admin</small>' : '')
+    + (c && c.title && TITLES[c.title] ? `<small class="ptitle${c.title === 'welt' ? ' top' : ''}">${esc(TITLES[c.title])}</small>` : '');
 
   // ===================== XP am Spielende =====================
   function gameOver(g) {
@@ -545,6 +550,7 @@
   Cloud.on('auth', u => {
     if (!u) { if (initFor || P.owner) { onLogout(); if (initFor) A.toast('Abgemeldet.'); } initFor = null; seenReq = null; seenChat = null; if (view && view !== 'login' && view !== 'pass') close(); }
     refresh();
+    if (A) A.profileChanged(); // Admin-Abzeichen an/aus
   });
   Cloud.on('profile', async p => {
     const u = Cloud.user;

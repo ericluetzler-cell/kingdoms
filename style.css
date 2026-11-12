@@ -1106,6 +1106,12 @@ i.shrink { color: #ff8a8a; font-style: normal; font-weight: 800; }
 .ptitle { display: inline-block; margin-left: .35em; font: italic 600 .74rem var(--body); color: var(--gold); letter-spacing: .02em; white-space: nowrap; }
 .ptitle.top { background: linear-gradient(90deg, #fff6c8, var(--gold) 50%, #ffb347); -webkit-background-clip: text; background-clip: text; color: transparent; font-weight: 800; }
 .acct-txt .ptitle, .fr-n .ptitle { margin-left: 0; }
+/* Admin-Abzeichen */
+.padm { display: inline-block; margin-left: .35em; padding: .05em .45em; border-radius: 999px; font: 800 .68rem var(--body); letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; vertical-align: .1em;
+  color: #fff; background: linear-gradient(90deg, #b3122e, #e0453a 45%, #ff9a3c); border: 1px solid #ffd27a; box-shadow: 0 0 8px rgba(255, 90, 60, .55); text-shadow: 0 1px 1px rgba(0, 0, 0, .4); animation: padmGlow 2.4s ease-in-out infinite; }
+@keyframes padmGlow { 50% { box-shadow: 0 0 14px rgba(255, 150, 60, .9); } }
+.acct-txt .padm, .fr-n .padm { margin: .1em 0; align-self: flex-start; }
+.players .nm .padm { display: table; margin: .15em 0 .05em; }
 .bigname { font-family: var(--display); font-size: 1.3rem; }
 
 /* Profilrahmen */

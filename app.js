@@ -24,7 +24,7 @@
     return { ...B, icon: b === 'fort' ? '#castle' : '#b-' + b, where: B.coast ? 'an der Küste' : B.on.length >= 5 ? 'überall' : B.on.map(t => K.TERRAIN[t].name).join(', ') + (B.ore ? ' oder ⛏️ Erz' : '') };
   }
   const newSeed = () => (Math.random() * 2 ** 32) >>> 0;
-  const APP_VERSION = '37';
+  const APP_VERSION = '38';
   const NET_V = 5;
   // nur zum Testen: mit ?debug in der Adresse ist der Spielzustand in der Konsole erreichbar
   const DEBUG = new URLSearchParams(location.search).has('debug');
@@ -3440,6 +3440,9 @@
   // ---------- Was ist neu? ----------
   // Nach jedem Update erscheint einmal ein Fenster mit den Neuigkeiten (neueste zuerst).
   const CHANGELOG = [
+    { v: '38', title: 'Admin-Abzeichen', items: [
+      '🛡️ Der Admin von Kingdoms trägt jetzt ein leuchtendes „Admin“-Abzeichen neben seinem Namen – in der Lobby, in der Spielerliste, bei den Freunden und auf dem Siegerbildschirm.',
+    ] },
     { v: '37', title: 'Konto, Freunde und Battle Pass', items: [
       '☁️ Konten: Melde dich mit E-Mail oder Google an – dann hast du auf Handy und PC dasselbe Profil, deine Statistik und deinen Battle Pass. Jeder Spielername kommt nur einmal vor.',
       '👥 Freunde: Füge Freunde über ihren Spielernamen hinzu, sieh, wer gerade online ist oder spielt, und schreibt euch Nachrichten – auch wenn einer gerade nicht da ist.',
