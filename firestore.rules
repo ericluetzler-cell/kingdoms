@@ -1,0 +1,66 @@
+rules_version = '2';
+// Kingdoms – Sicherheitsregeln für Firestore.
+// In der Firebase-Konsole unter „Firestore Database → Regeln“ komplett einfügen und „Veröffentlichen“ klicken.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isMe(uid) { return signedIn() && request.auth.uid == uid; }
+    function friends(a, b) { return exists(/databases/$(database)/documents/users/$(a)/friends/$(b)); }
+    function inChat(cid) { return signedIn() && cid.split('_').size() == 2 && request.auth.uid in cid.split('_'); }
+    function otherIn(cid) { return cid.split('_')[0] == request.auth.uid ? cid.split('_')[1] : cid.split('_')[0]; }
+
+    // Profile: jeder Angemeldete darf lesen (Freunde suchen), schreiben nur man selbst
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow write: if isMe(uid);
+
+      // Freundschaftsanfragen: {uid} bekommt eine Anfrage von {from}
+      match /requests/{from} {
+        allow read: if isMe(uid) || isMe(from);
+        allow create, update: if isMe(from) && from != uid;
+        allow delete: if isMe(uid) || isMe(from);
+      }
+
+      // Freunde: beim Annehmen trägt der Annehmende beide Seiten ein (nur wenn eine Anfrage da ist)
+      match /friends/{fid} {
+        allow read: if isMe(uid);
+        allow create: if (isMe(uid) && exists(/databases/$(database)/documents/users/$(uid)/requests/$(fid)))
+                      || (isMe(fid) && exists(/databases/$(database)/documents/users/$(fid)/requests/$(uid)));
+        allow delete: if isMe(uid) || isMe(fid);
+      }
+
+      // Einladungen in einen Raum: nur von Freunden
+      match /invites/{id} {
+        allow read, delete: if isMe(uid);
+        allow create: if signedIn() && request.resource.data.from == request.auth.uid && friends(uid, request.auth.uid);
+      }
+    }
+
+    // Online-Status
+    match /presence/{uid} {
+      allow read: if signedIn();
+      allow write: if isMe(uid);
+    }
+
+    // Spielernamen sind eindeutig
+    match /usernames/{name} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid && name.size() <= 40;
+      allow update: if signedIn() && resource.data.uid == request.auth.uid && request.resource.data.uid == request.auth.uid;
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    // Chats zwischen zwei Freunden; die ID ist „uidA_uidB“ (sortiert)
+    match /chats/{cid} {
+      allow read: if signedIn() && request.auth.uid in resource.data.members;
+      allow create, update: if inChat(cid) && request.resource.data.members == cid.split('_') && friends(request.auth.uid, otherIn(cid));
+
+      match /messages/{mid} {
+        allow read: if inChat(cid);
+        allow create: if inChat(cid) && request.resource.data.from == request.auth.uid
+                      && request.resource.data.text is string && request.resource.data.text.size() <= 500
+                      && friends(request.auth.uid, otherIn(cid));
+      }
+    }
+  }
+}

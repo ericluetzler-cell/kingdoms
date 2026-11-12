@@ -24,8 +24,8 @@
     return { ...B, icon: b === 'fort' ? '#castle' : '#b-' + b, where: B.coast ? 'an der Küste' : B.on.length >= 5 ? 'überall' : B.on.map(t => K.TERRAIN[t].name).join(', ') + (B.ore ? ' oder ⛏️ Erz' : '') };
   }
   const newSeed = () => (Math.random() * 2 ** 32) >>> 0;
-  const APP_VERSION = '36';
-  const NET_V = 4;
+  const APP_VERSION = '37';
+  const NET_V = 5;
   // nur zum Testen: mit ?debug in der Adresse ist der Spielzustand in der Konsole erreichbar
   const DEBUG = new URLSearchParams(location.search).has('debug');
 
@@ -40,9 +40,12 @@
   };
 
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  // nur zum Testen: mit ?mockcloud=a / ?mockcloud=b hat jeder Tab seinen eigenen Speicher (zwei Spieler in einem Browser)
+  const NS = (() => { const v = new URLSearchParams(location.search).get('mockcloud'); return v ? 'mock-' + v.replace(/\W/g, '').slice(0, 12) + '-' : ''; })();
   const store = {
-    get(k) { try { return localStorage.getItem(k); } catch { return null; } },
-    set(k, v) { try { localStorage.setItem(k, v); } catch { /* egal */ } },
+    get(k) { try { return localStorage.getItem(NS + k); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(NS + k, v); } catch { /* egal */ } },
+    del(k) { try { localStorage.removeItem(NS + k); } catch { /* egal */ } },
   };
   const newTok = () => Array.from(crypto.getRandomValues(new Uint8Array(12)), b => b.toString(16).padStart(2, '0')).join('');
   const PID = store.get('kingdoms-pid') || (() => { const v = Math.random().toString(36).slice(2, 12); store.set('kingdoms-pid', v); return v; })();
@@ -58,7 +61,11 @@
 
   if (DEBUG) window.__kingdoms = { S, render: () => render(), mini: () => Mini };
 
-  function show(id) { document.querySelectorAll('.screen').forEach(e => { e.hidden = e.id !== id; }); const m = document.querySelector('#menuSound'); if (m) m.hidden = id === 'game'; }
+  function show(id) {
+    document.querySelectorAll('.screen').forEach(e => { e.hidden = e.id !== id; });
+    const m = document.querySelector('#menuSound'); if (m) m.hidden = id === 'game';
+    if (window.Social) Social.onScreen(id);
+  }
   // Handy: die Ton-Knöpfe im Menü weichen beim Scrollen, damit sie keine Eingabefelder verdecken
   document.querySelectorAll('.title-screen').forEach(s => s.addEventListener('scroll', () => $('#menuSound').classList.toggle('away', s.scrollTop > 40), { passive: true }));
 
@@ -110,24 +117,30 @@
   // ---------- Titelbildschirm ----------
 
   $('#name').value = store.get('kingdoms-name') || '';
-  $('#name').addEventListener('change', () => store.set('kingdoms-name', myName()));
+  const edited = f => { if (window.Social) Social.profileEdited(f); };
+  $('#name').addEventListener('change', () => { store.set('kingdoms-name', myName()); edited('name'); });
 
   // ---------- Profil: eigenes Bild und Lieblingsfarbe ----------
 
   const PROFILE = { color: K.COLORS.includes(store.get('kingdoms-color')) ? store.get('kingdoms-color') : K.COLORS[0], avatar: store.get('kingdoms-avatar') || null };
   const myRealm = () => ($('#realm').value || '').replace(/\s+/g, ' ').trim().slice(0, 24);
   $('#realm').value = store.get('kingdoms-realm') || '';
-  $('#realm').addEventListener('change', () => store.set('kingdoms-realm', myRealm()));
+  $('#realm').addEventListener('change', () => { store.set('kingdoms-realm', myRealm()); edited('realm'); });
   const myCap = () => ($('#capname').value || '').replace(/\s+/g, ' ').trim().slice(0, 24);
   $('#capname').value = store.get('kingdoms-capname') || '';
-  $('#capname').addEventListener('change', () => store.set('kingdoms-capname', myCap()));
+  $('#capname').addEventListener('change', () => { store.set('kingdoms-capname', myCap()); edited('cap'); });
   $('#botnames').value = store.get('kingdoms-botnames') || '';
-  $('#botnames').addEventListener('change', () => store.set('kingdoms-botnames', $('#botnames').value.slice(0, 300)));
-  const me0 = () => ({ name: myName(), realm: myRealm(), cap: myCap(), type: 'human', cid: 'host', pid: PID, color: PROFILE.color, avatar: PROFILE.avatar });
+  $('#botnames').addEventListener('change', () => { store.set('kingdoms-botnames', $('#botnames').value.slice(0, 300)); edited('bots'); });
+  const myCos = () => (window.Social ? Social.cos() : null);
+  const me0 = () => ({ name: myName(), realm: myRealm(), cap: myCap(), type: 'human', cid: 'host', pid: PID, color: PROFILE.color, avatar: PROFILE.avatar, cos: myCos() });
   // Profilbild oder – ohne Bild – der Anfangsbuchstabe in der Reichsfarbe
-  const avatarHTML = (avatar, name, color, cls = '') => (avatar
-    ? `<img class="ava ${cls}" src="${avatar}" alt="">`
-    : `<span class="ava ${cls}" style="background:${color}">${esc((name || '?').trim().charAt(0).toUpperCase() || '?')}</span>`);
+  // Profilrahmen aus dem Battle Pass
+  const frameCls = cos => { const f = window.Social ? Social.frameOf(cos) : ''; return f ? ' fr fr-' + f : ''; };
+  const avatarHTML = (avatar, name, color, cls = '', cos = null) => (avatar
+    ? `<img class="ava ${cls}${frameCls(cos)}" src="${avatar}" alt="">`
+    : `<span class="ava ${cls}${frameCls(cos)}" style="background:${color}">${esc((name || '?').trim().charAt(0).toUpperCase() || '?')}</span>`);
+  const cosOf = i => (S.lobby && S.lobby[i] && S.lobby[i].cos) || null;
+  const titleOf = cos => (window.Social ? Social.titleHTML(cos) : '');
   const safeAvatar = a => (typeof a === 'string' && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(a) && a.length < 80000 ? a : null);
   function swatches(el, current, taken, onPick) {
     el.innerHTML = K.COLORS.map(c => `<button class="sw ${c === current ? 'on' : ''}" data-c="${c}" style="--sw:${c}"
@@ -135,9 +148,9 @@
     el.onclick = e => { const b = e.target.closest('[data-c]'); if (b && !b.disabled) onPick(b.dataset.c); };
   }
   function renderProfile() {
-    $('#avatarBtn').innerHTML = avatarHTML(PROFILE.avatar, myName(), PROFILE.color, 'big') + '<span class="ava-edit">📷</span>';
+    $('#avatarBtn').innerHTML = avatarHTML(PROFILE.avatar, myName(), PROFILE.color, 'big', myCos()) + '<span class="ava-edit">📷</span>';
     $('#avatarRemove').hidden = !PROFILE.avatar;
-    swatches($('#myColors'), PROFILE.color, [], c => { PROFILE.color = c; store.set('kingdoms-color', c); Sound.play('click'); renderProfile(); });
+    swatches($('#myColors'), PROFILE.color, [], c => { PROFILE.color = c; store.set('kingdoms-color', c); Sound.play('click'); renderProfile(); edited('color'); });
   }
   // Bild quadratisch zuschneiden und auf 128×128 verkleinern – klein genug fürs Online-Spiel, bleibt nur in diesem Browser
   function loadAvatar(file) {
@@ -152,6 +165,7 @@
       PROFILE.avatar = cv.toDataURL('image/jpeg', 0.82);
       store.set('kingdoms-avatar', PROFILE.avatar);
       renderProfile();
+      edited('avatar');
       toast('Profilbild gespeichert.');
     };
     img.onerror = () => { URL.revokeObjectURL(url); toast('Das Bild konnte nicht gelesen werden.'); };
@@ -159,7 +173,7 @@
   }
   $('#avatarBtn').onclick = $('#avatarUpload').onclick = () => $('#avatarFile').click();
   $('#avatarFile').onchange = e => { loadAvatar(e.target.files[0]); e.target.value = ''; };
-  $('#avatarRemove').onclick = () => { PROFILE.avatar = null; try { localStorage.removeItem('kingdoms-avatar'); } catch { /* egal */ } renderProfile(); };
+  $('#avatarRemove').onclick = () => { PROFILE.avatar = null; store.del('kingdoms-avatar'); renderProfile(); edited('avatar'); };
   $('#name').addEventListener('input', () => renderProfile());
   renderProfile();
 
@@ -318,7 +332,7 @@
     if (S.peer) { try { S.peer.destroy(); } catch { /* egal */ } }
     Object.assign(S, { role: null, me: 0, state: null, geo: null, lobby: [], code: '', peer: null, conns: new Map(), conn: null, seats: null, joinReqs: [], reqSeq: 0, seatTok: null, pin: -1, infoCell: -1,
       avatars: null, sel: -1, selPref: null, target: -1, mode: 'recruit', unit: 'w', bldg: 'lumber', amount: 1, turnKey: '',
-      seenBattle: 0, seenMarch: 0, chat: [], tut: null, lastLogN: null, mapKey: '', nationKey: '', labelKey: '', overShown: false, pick: null, plan: null, selDivs: null, split: null });
+      seenBattle: 0, seenMarch: 0, chat: [], tut: null, lastLogN: null, mapKey: '', nationKey: '', labelKey: '', overShown: false, pick: null, plan: null, selDivs: null, split: null, xpRes: null });
     $('#planner').hidden = true;
     $('#coach').hidden = true;
     $('#research').hidden = true;
@@ -606,15 +620,15 @@
     $('#lobbyHint').textContent = host ? 'Schicke Freunden den Code oder Link. Du kannst auch KI-Herrscher hinzufügen.' : 'Warte, bis der Gastgeber das Spiel startet…';
     seg($('#lobbyBotLevel'), [['easy', 'Leicht'], ['medium', 'Mittel'], ['hard', 'Schwer']], S.botLevel || 'medium', v => { S.botLevel = v; renderLobby(); });
     $('#lobbyList').innerHTML = S.lobby.map((p, i) => `
-      <li>${avatarHTML(p.avatar, p.name, p.color || K.COLORS[i], 'sm')}<span class="dot" style="background:${p.color || K.COLORS[i]}"></span>
-        <span class="grow">${esc(p.name)}${p.realm ? ` <span class="tag">🏰 ${esc(p.realm)}</span>` : ''} ${p.cid === 'host' ? '<span class="tag">👑 Gastgeber</span>' : ''}
+      <li>${avatarHTML(p.avatar, p.name, p.color || K.COLORS[i], 'sm', p.cos)}<span class="dot" style="background:${p.color || K.COLORS[i]}"></span>
+        <span class="grow">${esc(p.name)}${titleOf(p.cos)}${p.realm ? ` <span class="tag">🏰 ${esc(p.realm)}</span>` : ''} ${p.cid === 'host' ? '<span class="tag">👑 Gastgeber</span>' : ''}
           ${p.type === 'ai' ? `<span class="tag">🤖 KI ${LEVELS[p.level]}</span>` : ''}</span>
         ${host && p.type === 'ai' ? `<button data-rm="${i}" title="Entfernen">✕</button>` : ''}
         ${host && p.type === 'human' && p.cid !== 'host' ? `<button data-kick="${esc(p.cid)}" class="kick" title="Aus dem Raum werfen">👢 Kicken</button>` : ''}
       </li>`).join('');
     const mine = S.lobby.find(x => x.cid === (host ? 'host' : S.peer && S.peer.id));
     if (mine) swatches($('#lobbyColors'), mine.color, S.lobby.filter(x => x !== mine).map(x => x.color), c => {
-      PROFILE.color = c; store.set('kingdoms-color', c);
+      PROFILE.color = c; store.set('kingdoms-color', c); edited('color');
       if (host) { mine.color = c; lobbyChanged(); } else if (S.conn && S.conn.open) S.conn.send({ t: 'color', color: c });
       Sound.play('click');
     });
@@ -745,12 +759,19 @@
       const base = String(d.name || 'Gast').trim().slice(0, 16) || 'Gast';
       let nm = base, k = 2;
       while (S.lobby.some(x => x.name.toLowerCase() === nm.toLowerCase())) nm = `${base.slice(0, 13)} ${k++}`;
-      S.lobby.push({ name: nm, realm: String(d.realm || '').replace(/\s+/g, ' ').trim().slice(0, 24), cap: String(d.cap || '').replace(/\s+/g, ' ').trim().slice(0, 24), type: 'human', cid: conn.peer, pid: String(d.pid || '').slice(0, 20) || null, color, avatar: safeAvatar(d.avatar) });
+      S.lobby.push({ name: nm, realm: String(d.realm || '').replace(/\s+/g, ' ').trim().slice(0, 24), cap: String(d.cap || '').replace(/\s+/g, ' ').trim().slice(0, 24), type: 'human', cid: conn.peer, pid: String(d.pid || '').slice(0, 20) || null, color, avatar: safeAvatar(d.avatar),
+        cos: window.Social ? Social.cleanCos(d.cos) : null });
       return lobbyChanged();
     }
     if (d.t === 'action' && S.state) {
       const p = S.state.players.findIndex(x => x.cid === conn.peer);
       return hostApply(p, d.a);
+    }
+    if (d.t === 'cos' && !S.state) {
+      const e = S.lobby.find(x => x.cid === conn.peer);
+      if (!e) return;
+      e.cos = window.Social ? Social.cleanCos(d.cos) : null;
+      return lobbyChanged();
     }
     if (d.t === 'color' && !S.state) {
       const e = S.lobby.find(x => x.cid === conn.peer);
@@ -875,7 +896,7 @@
         conn._ok = true;
         const lr = lastRoom();
         conn.send({ t: 'join', name: myName(), realm: myRealm(), cap: myCap(), v: APP_VERSION, net: NET_V, pid: PID,
-          tok: S.seatTok || (lr && lr.code === code ? lr.tok : null), color: PROFILE.color, avatar: PROFILE.avatar });
+          tok: S.seatTok || (lr && lr.code === code ? lr.tok : null), color: PROFILE.color, avatar: PROFILE.avatar, cos: myCos() });
         // Verbindung steht – dem Gastgeber Zeit geben, uns wieder einzusetzen
         if (S.reconn) { clearTimeout(S.reconn.timer); S.reconn.timer = setTimeout(() => tryReconnect(), 9000); }
       });
@@ -950,7 +971,7 @@
       const first = !S.state;
       S.state = { ...d.state, geo: S.geo };
       S.me = S.state.players.findIndex(p => p.cid === S.peer.id);
-      if (first) { show('game'); S.avatars = S.lobby.map(p => p.avatar || null); rememberRoom(); }
+      if (first) { show('game'); S.avatars = S.lobby.map(p => p.avatar || null); S.xpRes = null; rememberRoom(); }
       if (S.reconn) { stopReconnect(); toast('✅ Wieder verbunden – du spielst wieder selbst!'); rememberRoom(); }
       render();
     } else if (d.t === 'chat') { S.chat.push(d.msg); renderChat(); }
@@ -978,7 +999,7 @@
     setTimeout(saveGame, 0);
     S.avatars = S.lobby.map(p => p.avatar || null);
     S.me = 0;
-    Object.assign(S, { sel: -1, selDivs: null, split: null, plan: null, seenBattle: 0, seenMarch: 0, turnKey: '', nationKey: '', labelKey: '' });
+    Object.assign(S, { sel: -1, selDivs: null, split: null, plan: null, seenBattle: 0, seenMarch: 0, turnKey: '', nationKey: '', labelKey: '', xpRes: null });
     $('#overlay').hidden = true;
     show('game');
     broadcastState(true);
@@ -1363,6 +1384,7 @@
     renderLog();
     renderChat();
     renderOverlay();
+    if (!st.over && !S.tut && st.players[S.me] && !st.players[S.me].alive && !S.xpRes) awardXP(st, true);
     if (!$('#research').hidden) renderResearch();
     if (!$('#planner').hidden) renderPlanner();
     const b = st.battle && st.battle.id !== S.seenBattle ? st.battle : null;
@@ -1609,7 +1631,8 @@
   function renderLabels() {
     const st = S.state, C = st.cells;
     // nur neu zeichnen, wenn sich etwas Sichtbares geändert hat (sonst springen die kleinen Animationen bei jedem Klick zurück)
-    const key = st.players.map(p => p.color).join() + '|' + C.map(c => [c.owner, c.building, c.hut ? 1 : 0, c.walls ? 1 : 0, c.capital ? 1 : 0, c.throne ? 1 : 0, c.name, c.wonder || '', c.ore ? 1 : 0, c.unrest || 0, c.siege ? c.siege.n : 0].join(':')).join('|');
+    const castles = st.players.map((p, i) => (window.Social ? Social.castleOf(cosOf(i)) : ''));
+    const key = st.players.map(p => p.color).join() + '|' + castles.join() + '|' + C.map(c => [c.owner, c.building, c.hut ? 1 : 0, c.walls ? 1 : 0, c.capital ? 1 : 0, c.throne ? 1 : 0, c.name, c.wonder || '', c.ore ? 1 : 0, c.unrest || 0, c.siege ? c.siege.n : 0].join(':')).join('|');
     if (S.labelKey === key && $('#labels').firstChild) return;
     S.labelKey = key;
     S.seenBldg = S.seenBldg || {};
@@ -1623,7 +1646,8 @@
       if (K.isCity(c)) {
         if (c.capital) {
           html += `<ellipse class="cap-glow" cx="${x}" cy="${y - 22}" rx="22" ry="9" fill="${col}"/>`;
-          html += `<use href="#capital" x="${x - 19}" y="${y - 52}" width="38" height="32" style="color:${col}"/>`;
+          const sk = c.owner >= 0 ? castles[c.owner] : '';
+          html += `<use href="#capital${sk ? '-' + sk : ''}" x="${x - 19}" y="${y - 52}" width="38" height="32" style="color:${col}"/>`;
           html += `<use class="cap-crown" href="#crown" x="${x - 6}" y="${y - 63}" width="12" height="7.5"/>`;
         } else html += `<use href="#castle" x="${x - 12}" y="${y - 41}" width="24" height="20" style="color:${col}"/>`;
         if (c.walls) html += `<use href="#walls" x="${x - 20}" y="${y - 33.5}" width="40" height="13"/>`;
@@ -2443,8 +2467,8 @@
       const traitor = p.traitor > st.round ? ' <span class="tag warn" title="Hat kürzlich einen Vertrag gebrochen">🗡️ Verräter</span>' : '';
       const away = p.away ? ' <span class="tag" title="Verbindung verloren – die KI spielt, bis er zurückkommt">📡</span>' : '';
       return `<li class="${i === st.turn && !st.over ? 'cur' : ''} ${p.alive ? '' : 'dead'}" style="--pc:${p.color}">
-        ${avatarHTML(S.avatars && S.avatars[i], p.name, p.color, 'sm')}
-        <span class="nm">${esc(p.name)}${i === S.me ? ' (Du)' : ''}${mark}${traitor}${away}${p.realm ? `<small class="realmname">🏰 ${esc(p.realm)}</small>` : ''}</span>
+        ${avatarHTML(S.avatars && S.avatars[i], p.name, p.color, 'sm', cosOf(i))}
+        <span class="nm">${esc(p.name)}${i === S.me ? ' (Du)' : ''}${mark}${traitor}${away}${titleOf(cosOf(i))}${p.realm ? `<small class="realmname">🏰 ${esc(p.realm)}</small>` : ''}</span>
         ${i === S.me && p.alive && !st.over ? '<button data-rename class="ghost" title="Reich und Hauptstadt umbenennen">✏️</button>' : ''}
         ${kick}
         <span class="st">${st.mode === 'throne' ? `<b class="crowns">👑 ${st.crowns[i]}/${st.crownGoal}</b> · ` : ''}${p.type === 'ai' ? `🤖 ${LEVELS[p.level] || ''} · ` : ''}🏳️ ${s.cells} · ⚔️ ${s.troops} · 🔬 ${s.techs} · ${K.score(st, i)} Punkte</span>
@@ -2893,7 +2917,7 @@
     if (!st) return;
     const rows = st.players.map((pl, i) => {
       const x = K.stats(st, i), r = pl.rec || {};
-      return `<tr class="${pl.alive ? '' : 'dead'}" style="--pc:${pl.color}"><td class="who">${avatarHTML(S.avatars && S.avatars[i], pl.name, pl.color, 'xs')} ${esc(pl.name)}${i === S.me ? ' (Du)' : ''}</td>
+      return `<tr class="${pl.alive ? '' : 'dead'}" style="--pc:${pl.color}"><td class="who">${avatarHTML(S.avatars && S.avatars[i], pl.name, pl.color, 'xs', cosOf(i))} ${esc(pl.name)}${i === S.me ? ' (Du)' : ''}</td>
         <td>${x.cells}</td><td>${x.troops}</td><td>${x.pop}</td><td>${x.wonders || '–'}</td><td>${x.income >= 0 ? '+' : ''}${x.income}</td><td>+${x.sciIncome}</td><td>${x.techs}</td><td>${x.buildings}</td>
         <td>${r.won || 0} / ${r.lost || 0}</td><td>${r.defended || 0}</td><td>${r.conq || 0}</td><td>${r.killed || 0}</td><td>${r.casualties || 0}</td><td>${r.monsters || 0}</td><td><b>${K.score(st, i)}</b></td></tr>`;
     }).join('');
@@ -2914,7 +2938,7 @@
     if (!b) return;
     if (b.dataset.st) { S.statTab = b.dataset.st; renderStats(); }
     else if (b.dataset.sm) { S.statMetric = +b.dataset.sm; renderStats(); }
-    else if (b.dataset.accreset !== undefined) ask('Deine ganze Statistik löschen?', 'Löschen').then(ok => { if (ok) { store.set('kingdoms-acc', ''); openAccStats(); } });
+    else if (b.dataset.accreset !== undefined) ask('Deine ganze Statistik löschen?', 'Löschen').then(ok => { if (ok) { store.set('kingdoms-acc', ''); if (window.Social) Social.statsSaved(); openAccStats(); } });
   });
 
   // ---------- Kontostatistik (auf diesem Gerät) ----------
@@ -2934,6 +2958,7 @@
     a.best = Math.max(a.best || 0, K.score(st, S.me));
     a.online = (a.online || 0) + (S.role === 'local' ? 0 : 1);
     store.set('kingdoms-acc', JSON.stringify(a));
+    if (window.Social) Social.statsSaved();
   }
   function openAccStats() {
     const a = accLoad(), o = $('#stats');
@@ -2941,7 +2966,7 @@
     const tile = (ic, v, l) => `<div class="tile"><span>${ic}</span><b>${v}</b><small>${l}</small></div>`;
     o.innerHTML = `<div class="modal stats acc">
       <div class="mhead"><h2>📊 Meine Statistik</h2><button data-sclose class="ghost" title="Schließen">✕</button></div>
-      <div class="accrow">${avatarHTML(PROFILE.avatar, myName(), PROFILE.color, 'big')}<div><b>${esc(myName())}</b><br><span class="tag">gespeichert auf diesem Gerät</span></div></div>
+      <div class="accrow">${avatarHTML(PROFILE.avatar, myName(), PROFILE.color, 'big', myCos())}<div><b>${esc(myName())}</b>${titleOf(myCos())}<br><span class="tag">${window.Social && Social.signedIn() ? '☁️ in deinem Konto gespeichert' : 'gespeichert auf diesem Gerät'}</span></div></div>
       ${g ? `<div class="tiles">
         ${tile('🎮', g, 'Spiele')}${tile('🏆', a.wins || 0, 'Siege')}${tile('📈', pct + ' %', 'Siegquote')}${tile('🤝', a.shared || 0, 'gemeinsame Siege')}
         ${tile('🌐', a.online || 0, 'Online-Spiele')}${tile('⭐', a.best || 0, 'beste Punktzahl')}${tile('🚩', a.conq || 0, 'Provinzen erobert')}${tile('⚔️', `${a.won || 0} / ${a.lost || 0}`, 'Angriffe gewonnen / verloren')}
@@ -2969,9 +2994,9 @@
       if (!ok) return;
       const nm = inp.value.replace(/\s+/g, ' ').trim().slice(0, 24);
       if (nm !== (me.realm || '')) act({ type: 'realm', name: nm });
-      $('#realm').value = nm; store.set('kingdoms-realm', nm);
+      $('#realm').value = nm; store.set('kingdoms-realm', nm); edited('realm');
       const cn = capIn ? capIn.value.replace(/\s+/g, ' ').trim().slice(0, 24) : '';
-      if (cap && cn.length >= 2 && cn !== cap.name) { act({ type: 'capname', name: cn }); $('#capname').value = cn; store.set('kingdoms-capname', cn); }
+      if (cap && cn.length >= 2 && cn !== cap.name) { act({ type: 'capname', name: cn }); $('#capname').value = cn; store.set('kingdoms-capname', cn); edited('cap'); }
     };
     if (capIn) capIn.onkeydown = e => { if (e.key === 'Enter') done(true); };
     inp.onkeydown = e => { if (e.key === 'Enter') done(true); };
@@ -3165,6 +3190,10 @@
       <p>Mit der Forschung <b>⛵ Seefahrt</b> baust du in Küstenprovinzen einen <b>Hafen</b>. So geht's: Truppen in den Hafen bringen, Armee auswählen – alle erreichbaren Küsten leuchten mit Seewegen auf (grün = eigene Provinz, rot = Angriff).
         Tippe eine an, und die Truppen segeln dorthin oder landen direkt an einer fremden Küste. Dazu bringt jeder Hafen <b>Seehandel</b>: +1 Gold für jeden eigenen oder verbündeten Hafen in Reichweite (höchstens +3).<br>
         Durch das Land von <b>🤝 Verbündeten</b> darfst du hindurchmarschieren (stehen bleiben geht dort nicht).</p>
+      <h3>Konto, Freunde und Battle Pass</h3>
+      <p>Im Hauptmenü meldest du dich oben an (E-Mail oder Google). Dann gelten Profil, Statistik und Battle Pass auf jedem Gerät.
+        Unter <b>👥 Freunde</b> fügst du Freunde über ihren Spielernamen hinzu, chattest mit ihnen und lädst sie in deinen Raum ein.
+        Im <b>🏆 Battle Pass</b> sammelst du mit jeder Partie XP (mehr für Siege, Freunde als Gegner und die Aufgaben der Woche). Alle 200 XP steigst du eine Stufe auf und holst dir Titel, Rahmen, Burg-Stile, Emotes und Siegeseffekte ab. Unter „Sammlung“ wählst du aus, was die anderen sehen.</p>
       <h3>Schnee und Sandwürmer</h3>
       <p>❄️ <b>Schnee</b> bedeckt den Norden: wenig Gold, etwas Stein – aber +35 % Verteidigung. 🪱 <b>Sandwürmer</b> hausen in der Wüste:
         Ihr Nest ist ein großer Schatz, doch Wüstenprovinzen daneben verlieren ab und zu Truppen an die Würmer.</p>
@@ -3291,8 +3320,10 @@
   function renderChat() {
     $('#chatBox').hidden = S.role === 'local';
     const box = $('#chat');
-    const avaOf = name => { const e = S.lobby.find(x => x.name === name); return e ? e.avatar : null; };
-    box.innerHTML = S.chat.slice(-60).map(m => `<div class="cmsg">${avatarHTML(avaOf(m.name), m.name, m.color, 'xs')}<span><b style="color:${esc(m.color)}">${esc(m.name)}:</b> ${esc(m.text)}</span></div>`).join('');
+    const em = window.Social ? Social.emotes() : ['👍', '😂', '😡', '🤝', '⚔️', '😱'];
+    if (S.emoKey !== em.join('')) { S.emoKey = em.join(''); $('#chatBox .emotes').innerHTML = em.map(x => `<button data-e="${x}">${x}</button>`).join(''); }
+    const entry = name => S.lobby.find(x => x.name === name) || {};
+    box.innerHTML = S.chat.slice(-60).map(m => `<div class="cmsg">${avatarHTML(entry(m.name).avatar, m.name, m.color, 'xs', entry(m.name).cos)}<span><b style="color:${esc(m.color)}">${esc(m.name)}:</b> ${esc(m.text)}</span></div>`).join('');
     box.scrollTop = box.scrollHeight;
   }
 
@@ -3320,6 +3351,21 @@
 
   // ---------- Spielende ----------
 
+  // Battle-Pass-XP: am Spielende – oder schon, wenn das eigene Reich fällt
+  function awardXP(st, out) {
+    if (!window.Social || S.tut || !st || !st.players[S.me]) return null;
+    const winners = st.winners && st.winners.length ? st.winners : [st.winner];
+    const won = !out && winners.includes(S.me);
+    const r = Social.gameOver({
+      id: st.id, won, shared: won && winners.length > 1, rounds: Math.min(st.round, st.maxRounds), rec: st.players[S.me].rec || {},
+      wonders: K.stats(st, S.me).wonders || 0, size: S.settings.size,
+      humans: S.role === 'local' ? 1 : S.lobby.filter(p => p.type === 'human').length,
+      opp: st.players.map((p, i) => ({ i, type: S.lobby[i] && S.lobby[i].type === 'human' ? 'human' : 'ai', level: p.level })).filter(o => o.i !== S.me),
+    });
+    if (r) { S.xpRes = r; if (out) toast(`💀 Dein Reich ist gefallen – +${r.xp} XP für den Battle Pass.`); }
+    return r;
+  }
+
   function renderOverlay() {
     const st = S.state, o = $('#overlay');
     if (!st.over) { o.hidden = true; S.overShown = false; return; }
@@ -3328,22 +3374,25 @@
     const winners = st.winners && st.winners.length ? st.winners : [st.winner];
     const won = winners.includes(S.me), shared = winners.length > 1;
     recordGame(st);
+    const xr = awardXP(st, false) || S.xpRes;
     const canRestart = S.role !== 'guest';
     const ranking = st.players.map((p, i) => ({ i, s: K.score(st, i) })).sort((a, b) => b.s - a.s)
       .map(r => `<li>${pName(r.i)} <span class="tag">${r.s} Punkte</span></li>`).join('');
     setTimeout(() => {
       Sound.play(won ? 'victory' : 'defeat');
       o.innerHTML = `<div class="modal center victory">
-        ${S.avatars && S.avatars[st.winner] ? avatarHTML(S.avatars[st.winner], st.players[st.winner].name, st.players[st.winner].color, 'win') : '<svg class="crest" style="width:64px;height:72px"><use href="#crest"/></svg>'}
+        ${S.avatars && S.avatars[st.winner] ? avatarHTML(S.avatars[st.winner], st.players[st.winner].name, st.players[st.winner].color, 'win', cosOf(st.winner)) : '<svg class="crest" style="width:64px;height:72px"><use href="#crest"/></svg>'}
         <h1>${won ? (shared ? 'Gemeinsamer Sieg!' : 'Sieg!') : 'Spielende'}</h1>
         <p>${shared ? `🤝 Das Bündnis aus ${winners.map(pName).join(' und ')} herrscht gemeinsam über das Land!` : `${pName(st.winner)} ${won ? '– du –' : ''} herrscht über das Land!`}</p>
         <ol class="ranking">${ranking}</ol>
+        ${xr ? xr.html : ''}
         <div class="row">
           <button id="oMenu">Hauptmenü</button>
           <button id="oStats">📊 Statistik</button>
           ${canRestart ? '<button id="oAgain" class="primary">Nochmal spielen</button>' : '<span class="tag">Warte auf den Gastgeber…</span>'}
         </div></div>`;
       o.hidden = false;
+      if (won && window.Social) Social.victoryFx(o);
       $('#oMenu').onclick = toMenu;
       $('#oStats').onclick = () => openStats('chart');
       if (canRestart) $('#oAgain').onclick = () => {
@@ -3391,6 +3440,13 @@
   // ---------- Was ist neu? ----------
   // Nach jedem Update erscheint einmal ein Fenster mit den Neuigkeiten (neueste zuerst).
   const CHANGELOG = [
+    { v: '37', title: 'Konto, Freunde und Battle Pass', items: [
+      '☁️ Konten: Melde dich mit E-Mail oder Google an – dann hast du auf Handy und PC dasselbe Profil, deine Statistik und deinen Battle Pass. Jeder Spielername kommt nur einmal vor.',
+      '👥 Freunde: Füge Freunde über ihren Spielernamen hinzu, sieh, wer gerade online ist oder spielt, und schreibt euch Nachrichten – auch wenn einer gerade nicht da ist.',
+      '🎮 Einladen: Erstelle einen Raum und lade Freunde mit einem Klick ein. Sie bekommen oben einen Hinweis und treten mit „Beitreten“ sofort bei.',
+      '🏆 Battle Pass „Saison 1: Zeit der Kronen“ mit 30 Stufen: XP gibt es für jede Partie, jede Runde, Siege, Eroberungen, den ersten Sieg des Tages und drei Aufgaben pro Woche.',
+      '🎁 Belohnungen: Titel unter deinem Namen, Profilrahmen (bis zu Flammen und Königlich), Burg-Stile für deine Hauptstadt (Bannerburg, Eisfestung, Goldene Burg, Drachenhort), neue Chat-Emotes und Siegeseffekte wie Konfetti und Feuerwerk. Alle sehen sie im Spiel.',
+    ] },
     { v: '36', title: 'Großes Strategie-Update', items: [
       '👥 Bevölkerung: Nahrung wird nicht mehr gelagert, sie gibt Platz für Einwohner. Provinzen wachsen jede Runde, 50 % der Einwohner sind wehrfähig – oben bei 👥 siehst du, wie viele noch Soldat werden können.',
       '⛓️ Neuer Rohstoff Eisen aus ⛏️ Erzvorkommen und Minen: Ritter, Schwere Reiter, Armbrustschützen und Triboke brauchen ihn. Einheiten und Gebäude sind teurer, Holz und Stein knapper.',
@@ -3524,4 +3580,44 @@
   setTimeout(checkVersion, 4000);
   renderResume();
   setTimeout(() => showNews(false), 600);
+
+  // ---------- Konto, Freunde, Battle Pass (social.js) ----------
+  async function joinFromInvite(code) {
+    if (!window.Peer) return toast('Online-Modul konnte nicht geladen werden – Internetverbindung prüfen.');
+    if (S.code === code && (S.role === 'guest' || S.role === 'host')) return toast('Du bist schon in diesem Raum.');
+    if (S.state && !S.state.over && !(await ask(`Du bist gerade in einem Spiel${S.role === 'host' ? ' – als Gastgeber: alle anderen fliegen raus' : ''}. Verlassen und dem Raum ${esc(code)} beitreten?`, 'Beitreten'))) return;
+    if (!S.state && S.code && !(await ask(`Deinen Raum ${esc(S.code)} verlassen und Raum ${esc(code)} beitreten?`, 'Beitreten'))) return;
+    $('#overlay').hidden = true; $('#gameMenu').hidden = true; $('#stats').hidden = true;
+    resetSession();
+    S.role = 'guest';
+    joinRoom(code);
+  }
+  // eigene Battle-Pass-Optik geändert: in der Lobby gleich allen zeigen
+  function cosChanged() {
+    renderProfile();
+    const cos = myCos();
+    if (!S.state && S.role === 'host') { const m = S.lobby.find(x => x.cid === 'host'); if (m) { m.cos = cos; lobbyChanged(); } }
+    else if (!S.state && S.role === 'guest' && S.conn && S.conn.open) S.conn.send({ t: 'cos', cos });
+    if (S.state) { S.emoKey = ''; renderChat(); }
+  }
+  if (window.Social) Social.init({
+    store, toast, ask, notice, Sound, avatarHTML,
+    getProfile: () => ({ name: myName(), realm: myRealm(), cap: myCap(), bots: store.get('kingdoms-botnames') || '', color: PROFILE.color, avatar: PROFILE.avatar }),
+    applyProfile(p) {
+      if (!p) return;
+      if (typeof p.name === 'string' && p.name) { $('#name').value = p.name.slice(0, 16); store.set('kingdoms-name', p.name.slice(0, 16)); }
+      if (typeof p.realm === 'string') { $('#realm').value = p.realm.slice(0, 24); store.set('kingdoms-realm', p.realm.slice(0, 24)); }
+      if (typeof p.cap === 'string') { $('#capname').value = p.cap.slice(0, 24); store.set('kingdoms-capname', p.cap.slice(0, 24)); }
+      if (typeof p.bots === 'string') { $('#botnames').value = p.bots.slice(0, 300); store.set('kingdoms-botnames', p.bots.slice(0, 300)); }
+      if (K.COLORS.includes(p.color)) { PROFILE.color = p.color; store.set('kingdoms-color', p.color); }
+      if (p.avatar !== undefined) { PROFILE.avatar = safeAvatar(p.avatar); if (PROFILE.avatar) store.set('kingdoms-avatar', PROFILE.avatar); else store.del('kingdoms-avatar'); }
+      renderProfile();
+    },
+    accGet: accLoad,
+    accSet: a => store.set('kingdoms-acc', JSON.stringify(a || {})),
+    room: () => (S.code && (S.role === 'host' || S.role === 'guest') ? { code: S.code, inGame: !!S.state, host: S.role === 'host' } : null),
+    joinRoom: joinFromInvite,
+    profileChanged: cosChanged,
+    closeOverlays(b) { if (b.closest('#gameMenu')) $('#gameMenu').hidden = true; if (b.closest('#stats')) $('#stats').hidden = true; },
+  });
 })();
