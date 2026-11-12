@@ -5,20 +5,27 @@
 
   const $ = s => document.querySelector(s);
   const LEVELS = { easy: 'Leicht', medium: 'Mittel', hard: 'Schwer' };
-  const BOT_NAMES = ['Graf Bruno', 'Lady Mira', 'König Otto', 'Baronin Ilse', 'Ritter Kunz', 'Herzogin Wanda', 'Fürst Egon', 'Gräfin Liv'];
+  const BOT_NAMES = ['Graf Bruno', 'Lady Mira', 'König Otto', 'Baronin Ilse', 'Ritter Kunz', 'Herzogin Wanda', 'Fürst Egon', 'Gräfin Liv',
+    'Baron Bratwurst', 'Herzog Kartoffelbart', 'König Knödel', 'Lady Lasagne', 'Fürst Fritten', 'Prinz Pommes', 'Baronin Brezel', 'Graf Gurke',
+    'Ritter Rührei', 'Kaiser Kunibert', 'Markgraf Moppel', 'Junker Jupp', 'Freiherr Fips', 'Edle Erna', 'Gräfin Gertrud', 'Landgraf Lutz',
+    'Zar Zacharias', 'Häuptling Hubert', 'Königin Klothilde', 'Burgherr Bodo', 'Vogt Volker', 'Abt Anselm', 'Ritterin Rabea', 'Lord Lauch',
+    'Kaiserin Käthe', 'Drachentöter Dieter', 'Schwertmeister Schorsch', 'Sir Schnarch', 'Herzogin Hedwig', 'Kurfürst Kalle', 'Prinzessin Paprika', 'Lady Leberkäs'];
   const ID_PREFIX = 'kingdoms-game-';
-  const BOT_REALMS = ['Eisenkrone', 'Sonnenthal', 'Rabenfels', 'Goldküste', 'Sturmwacht', 'Wolfsland', 'Silberau', 'Nebelmark'];
+  const BOT_REALMS = ['Eisenkrone', 'Sonnenthal', 'Rabenfels', 'Goldküste', 'Sturmwacht', 'Wolfsland', 'Silberau', 'Nebelmark', 'Knödelreich', 'Bratwurstia',
+    'Hohenschnitzel', 'Brezelburg', 'Frostheim', 'Glutstein', 'Morgenrot', 'Sternenwacht', 'Grünmark', 'Eichenhain', 'Donnerberg', 'Mondsee', 'Rosenau',
+    'Krähenwald', 'Pommesland', 'Kartoffelmark', 'Schnarchingen', 'Löwenherz', 'Drachenstein', 'Wolkenfels', 'Salzküste', 'Bärental'];
+  const shuffled = a => { const b = a.slice(); for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b; };
   const BLDG_ORDER = ['farm', 'lumber', 'quarry', 'granary', 'mine', 'harbor', 'library', 'market', 'temple', 'caravan', 'tower', 'barracks', 'fort'];
   const BUILD_CATS = { eco: ['farm', 'lumber', 'quarry', 'granary', 'mine', 'harbor', 'library', 'market', 'temple', 'caravan'], mil: ['tower', 'barracks', 'fort', 'walls'], tools: ['demolish'] };
   function bInfo(b) {
-    if (b === 'walls') return { name: 'Stadtmauern', cost: K.WALLS_COST, need: K.WALLS_NEED, tech: 'fortification', desc: '+50 % Verteidigung', icon: '#walls', where: 'Hauptstadt oder Festung' };
+    if (b === 'walls') return { name: 'Stadtmauern', cost: K.WALLS_COST, need: K.WALLS_NEED, tech: 'fortification', desc: '+50 % Verteidigung – nur Belagerung bricht sie', icon: '#walls', where: 'Hauptstadt oder Festung' };
     if (b === 'demolish') return { name: 'Abreißen', cost: 0, need: {}, tech: 'demolition', desc: '50 % der Kosten zurück', emoji: '🔨', where: 'eigene Gebäude und Mauern' };
     const B = K.BUILDINGS[b];
-    return { ...B, icon: b === 'fort' ? '#castle' : '#b-' + b, where: B.coast ? 'an der Küste' : B.on.length >= 5 ? 'überall' : B.on.map(t => K.TERRAIN[t].name).join(', ') };
+    return { ...B, icon: b === 'fort' ? '#castle' : '#b-' + b, where: B.coast ? 'an der Küste' : B.on.length >= 5 ? 'überall' : B.on.map(t => K.TERRAIN[t].name).join(', ') + (B.ore ? ' oder ⛏️ Erz' : '') };
   }
   const newSeed = () => (Math.random() * 2 ** 32) >>> 0;
-  const APP_VERSION = '35';
-  const NET_V = 3;
+  const APP_VERSION = '36';
+  const NET_V = 4;
   // nur zum Testen: mit ?debug in der Adresse ist der Spielzustand in der Konsole erreichbar
   const DEBUG = new URLSearchParams(location.search).has('debug');
 
@@ -88,13 +95,16 @@
 
   const myName = () => ($('#name').value.trim() || 'Spieler').slice(0, 16);
 
+  // eigene Bot-Namen (Freunde, Insider) aus dem Profil – sie kommen zuerst dran
+  const myBots = () => (store.get('kingdoms-botnames') || '').split(/[,;\n]/).map(n => n.replace(/\s+/g, ' ').trim().slice(0, 16)).filter(Boolean);
   function botEntry(level, list = S.lobby) {
     const used = new Set(list.map(p => p.name));
-    const name = BOT_NAMES.find(n => !used.has(n)) || 'Bot ' + (list.length + 1);
+    const name = shuffled(myBots()).find(n => !used.has(n)) || shuffled(BOT_NAMES).find(n => !used.has(n)) || 'Bot ' + (list.length + 1);
     const usedC = new Set(list.map(p => p.color));
     const usedR = new Set(list.map(p => p.realm));
-    const realm = BOT_REALMS.find(r => !usedR.has(r)) || '';
-    return { name, realm, type: 'ai', level, color: K.COLORS.find(c => !usedC.has(c)) };
+    const realm = shuffled(BOT_REALMS).find(r => !usedR.has(r)) || '';
+    const color = shuffled(K.COLORS.slice(0, 10)).find(c => !usedC.has(c)) || K.COLORS.find(c => !usedC.has(c));
+    return { name, realm, type: 'ai', level, color };
   }
 
   // ---------- Titelbildschirm ----------
@@ -108,7 +118,12 @@
   const myRealm = () => ($('#realm').value || '').replace(/\s+/g, ' ').trim().slice(0, 24);
   $('#realm').value = store.get('kingdoms-realm') || '';
   $('#realm').addEventListener('change', () => store.set('kingdoms-realm', myRealm()));
-  const me0 = () => ({ name: myName(), realm: myRealm(), type: 'human', cid: 'host', pid: PID, color: PROFILE.color, avatar: PROFILE.avatar });
+  const myCap = () => ($('#capname').value || '').replace(/\s+/g, ' ').trim().slice(0, 24);
+  $('#capname').value = store.get('kingdoms-capname') || '';
+  $('#capname').addEventListener('change', () => store.set('kingdoms-capname', myCap()));
+  $('#botnames').value = store.get('kingdoms-botnames') || '';
+  $('#botnames').addEventListener('change', () => store.set('kingdoms-botnames', $('#botnames').value.slice(0, 300)));
+  const me0 = () => ({ name: myName(), realm: myRealm(), cap: myCap(), type: 'human', cid: 'host', pid: PID, color: PROFILE.color, avatar: PROFILE.avatar });
   // Profilbild oder – ohne Bild – der Anfangsbuchstabe in der Reichsfarbe
   const avatarHTML = (avatar, name, color, cls = '') => (avatar
     ? `<img class="ava ${cls}" src="${avatar}" alt="">`
@@ -730,7 +745,7 @@
       const base = String(d.name || 'Gast').trim().slice(0, 16) || 'Gast';
       let nm = base, k = 2;
       while (S.lobby.some(x => x.name.toLowerCase() === nm.toLowerCase())) nm = `${base.slice(0, 13)} ${k++}`;
-      S.lobby.push({ name: nm, realm: String(d.realm || '').replace(/\s+/g, ' ').trim().slice(0, 24), type: 'human', cid: conn.peer, pid: String(d.pid || '').slice(0, 20) || null, color, avatar: safeAvatar(d.avatar) });
+      S.lobby.push({ name: nm, realm: String(d.realm || '').replace(/\s+/g, ' ').trim().slice(0, 24), cap: String(d.cap || '').replace(/\s+/g, ' ').trim().slice(0, 24), type: 'human', cid: conn.peer, pid: String(d.pid || '').slice(0, 20) || null, color, avatar: safeAvatar(d.avatar) });
       return lobbyChanged();
     }
     if (d.t === 'action' && S.state) {
@@ -859,7 +874,7 @@
       conn.on('open', () => {
         conn._ok = true;
         const lr = lastRoom();
-        conn.send({ t: 'join', name: myName(), realm: myRealm(), v: APP_VERSION, net: NET_V, pid: PID,
+        conn.send({ t: 'join', name: myName(), realm: myRealm(), cap: myCap(), v: APP_VERSION, net: NET_V, pid: PID,
           tok: S.seatTok || (lr && lr.code === code ? lr.tok : null), color: PROFILE.color, avatar: PROFILE.avatar });
         // Verbindung steht – dem Gastgeber Zeit geben, uns wieder einzusetzen
         if (S.reconn) { clearTimeout(S.reconn.timer); S.reconn.timer = setTimeout(() => tryReconnect(), 9000); }
@@ -1015,7 +1030,7 @@
     S.role = sv.role; S.state = sv.state; S.lobby = sv.lobby; S.settings = sv.settings; S.me = 0;
     S.avatars = S.lobby.map(p => p.avatar || null);
     const st = S.state;
-    for (const p of st.players) for (const k of K.RKEYS) if (p[k] == null) p[k] = 4;
+    K.migrate(st);
     if (!st.pacts) { st.pacts = {}; for (const k of st.alliances || []) st.pacts[k] = { kind: 'alliance', since: 1, ends: null }; }
     S.seats = sv.seats || st.players.map((p, i) => (p.pid ? { pid: p.pid, tok: null } : null));
     for (const p of st.players) delete p.pid;
@@ -1091,7 +1106,7 @@
   const readyDivs = c => c.divs.filter(v => !v.done);
   const strongest = u => [...K.TYPES].reverse().find(t => u[t] > 0) || 'w';
   const svgEl = () => $('#map');
-  const SND = { recruit: 'recruit', build: 'build', research: 'research', demolish: null, end: 'click', propose: 'click', accept: 'click', order: 'select', break: 'lose', betray: 'lose', cancel: 'click', gift: 'recruit', decline: 'click', split: 'select', merge: 'select' };
+  const SND = { recruit: 'recruit', build: 'build', research: 'research', demolish: null, end: 'click', propose: 'click', accept: 'click', order: 'select', break: 'lose', betray: 'lose', cancel: 'click', gift: 'recruit', decline: 'click', split: 'select', merge: 'select', siege: 'battle', pacify: 'recruit', capname: 'click' };
 
   let view = { x: 0, y: 0, w: 100, h: 100 };
   const dockSide = () => { const d = $('#actionbar').getBoundingClientRect(); return d.width && d.width < window.innerWidth * 0.6 && d.top < window.innerHeight / 3; };
@@ -1506,19 +1521,19 @@
         let sxx = 0, syy = 0, sxy = 0;
         for (const [x, y] of P) { sxx += (x - mx) ** 2; syy += (y - my) ** 2; sxy += (x - mx) * (y - my); }
         let ang = 0.5 * Math.atan2(2 * sxy, sxx - syy);
-        ang = Math.max(-0.6, Math.min(0.6, ang));
+        ang = Math.max(-0.45, Math.min(0.45, ang));
         const ux = Math.cos(ang), uy = Math.sin(ang);
         const proj = P.map(([x, y]) => (x - mx) * ux + (y - my) * uy);
-        const len = Math.max(70, Math.max(...proj) - Math.min(...proj) + 30);
+        const len = Math.max(70, Math.max(...proj) - Math.min(...proj) + 24);
         const name = pl.realm || pl.name;
-        // kleiner, edler Schriftzug, der sich sanft entlang des Gebiets biegt
-        const fs = Math.max(6, Math.min(15, len / (name.length * 1.35)));
-        const half = Math.min(len, name.length * fs * 1.15) / 2 + 10, bend = half * 0.14;
+        // breiter, zarter Schriftzug quer über das ganze Gebiet (wie in Strategiespielen von Paradox)
+        const fs = Math.max(9, Math.min(44, (len * 0.86) / (name.length * 0.95)));
+        const half = Math.min(len * 0.5, name.length * fs * 0.5 + 8), bend = half * 0.1;
         const x1 = mx - ux * half, y1 = my - uy * half, x2 = mx + ux * half, y2 = my + uy * half;
         const cx = mx + uy * bend * 2, cy = my - ux * bend * 2;
         const id = `rp-${p}-${html.length}`;
         html += `<path id="${id}" d="M${x1.toFixed(1)} ${y1.toFixed(1)} Q${cx.toFixed(1)} ${cy.toFixed(1)} ${x2.toFixed(1)} ${y2.toFixed(1)}" fill="none"/>
-          <text class="realm" font-size="${fs.toFixed(1)}" fill="${pl.color}" dy="${(fs * 0.35).toFixed(1)}"><textPath href="#${id}" startOffset="50%">${esc(name)}</textPath></text>`;
+          <text class="realm big" fill="${pl.color}" dy="${(fs * 0.35).toFixed(1)}" style="font-size:${fs.toFixed(1)}px;letter-spacing:${(fs * 0.22).toFixed(1)}px"><textPath href="#${id}" startOffset="50%">${esc(name)}</textPath></text>`;
       });
     });
     $('#realms').innerHTML = html;
@@ -1594,7 +1609,7 @@
   function renderLabels() {
     const st = S.state, C = st.cells;
     // nur neu zeichnen, wenn sich etwas Sichtbares geändert hat (sonst springen die kleinen Animationen bei jedem Klick zurück)
-    const key = st.players.map(p => p.color).join() + '|' + C.map(c => [c.owner, c.building, c.hut ? 1 : 0, c.walls ? 1 : 0, c.capital ? 1 : 0, c.throne ? 1 : 0, c.name].join(':')).join('|');
+    const key = st.players.map(p => p.color).join() + '|' + C.map(c => [c.owner, c.building, c.hut ? 1 : 0, c.walls ? 1 : 0, c.capital ? 1 : 0, c.throne ? 1 : 0, c.name, c.wonder || '', c.ore ? 1 : 0, c.unrest || 0, c.siege ? c.siege.n : 0].join(':')).join('|');
     if (S.labelKey === key && $('#labels').firstChild) return;
     S.labelKey = key;
     S.seenBldg = S.seenBldg || {};
@@ -1633,12 +1648,20 @@
           <use href="#b-${c.building}" x="${bx - 12}" y="${by - 13}" width="24" height="24" style="color:${col}"/></g>`;
       }
       if (c.hut) html += `<use href="#hut" x="${x + BLDG_SPOT[0] - 7}" y="${y + BLDG_SPOT[1] - 7}" width="14" height="14"/>`;
+      if (c.wonder) {
+        const W = K.WONDERS[c.wonder];
+        html += `<g class="wonder w-${c.wonder}"><title>${W.name}: ${W.desc}</title><ellipse class="w-glow" cx="${x + 27}" cy="${y + 3}" rx="13" ry="4.5"/>
+          <use href="#w-${c.wonder}" x="${x + 15}" y="${y - 20}" width="24" height="24"/></g>`;
+      }
+      if (c.ore) html += `<use class="ore-mark" href="#ore" x="${x + (c.wonder ? 9 : 17)}" y="${y + 3}" width="11" height="11"><title>Erzvorkommen: +1 Eisen</title></use>`;
+      if (c.unrest > 0) html += `<g class="unrest-mark" transform="translate(${x} ${y - 27})"><title>Widerstand: noch ${c.unrest} Runden</title><use href="#torch" x="-12" y="-7" width="9" height="13"/><text x="0" y="3">${c.unrest}</text></g>`;
+      if (c.siege) html += `<g class="siege-mark" transform="translate(${x} ${y - 16})"><title>Belagert (Runde ${c.siege.n})</title><circle r="29" class="siege-ring"/></g>`;
     });
     $('#labels').innerHTML = html;
   }
 
   // Divisionen wie bei Hearts of Iron: eine Figur je Division (stärkste Einheit) auf einem Sockel mit der Stärke
-  const FIG_W = { w: 12, a: 12, p: 12, l: 12, k: 17, c: 17, h: 17, t: 19, wo: 20, tr: 17, dr: 24, sw: 17 };
+  const FIG_W = { w: 12, a: 12, p: 12, l: 12, x: 12, k: 17, c: 17, h: 17, t: 19, wo: 20, tr: 17, dr: 24, sw: 17 };
   // geplante Märsche: gestrichelter Weg mit Fähnchen am Ziel (nur die eigenen)
   function renderOrders() {
     const st = S.state, C = st.cells;
@@ -1654,6 +1677,16 @@
           <g class="order-flag" transform="translate(${C[g].lx} ${C[g].ly - 6})"><path d="M0 0 V-14" stroke="#3a2a1a" stroke-width="1.2"/><path d="M0.5 -14 L9 -11 L0.5 -8 Z" fill="${st.players[S.me].color}" stroke="#1d150c" stroke-width=".6"/></g>`;
       }
     });
+    // Hafen gewählt: alle Küsten in Segelreichweite zeigen (grün = eigene, rot = Angriffsziel)
+    if (S.sel >= 0 && myTurn() && K.canSail(st, S.sel)) {
+      const a = C[S.sel];
+      for (const j of K.seaTargets(st, S.sel)) {
+        const b = C[j], own = b.owner === S.me, foe = attackable(j);
+        if (!own && !foe) continue;
+        const mx = (a.lx + b.lx) / 2, my = (a.ly + b.ly) / 2 - Math.hypot(b.lx - a.lx, b.ly - a.ly) * 0.15;
+        html += `<path class="sea-line ${own ? 'own' : 'foe'}" d="M${a.lx} ${a.ly} Q${mx.toFixed(1)} ${my.toFixed(1)} ${b.lx} ${b.ly}"/>`;
+      }
+    }
     $('#orders').innerHTML = html;
   }
 
@@ -1856,7 +1889,7 @@
     setTimeout(() => {
       const ban = $('#banner');
       ban.innerHTML = `${pName(attacker)} ${b.won ? 'erobert' : 'scheitert an'} <b>${esc(to.name)}</b> (${Math.round(b.p * 100)} %${froms.length > 1 ? ` · aus ${froms.length} Provinzen` : ''})` +
-        ` <span class="loss">Verluste −${b.aL} / −${b.dL}${b.reward ? ' ·' + esc(b.reward) : ''}</span>`;
+        ` <span class="loss">Verluste −${b.aL} / −${b.dL}${b.reward ? ' ·' + esc(b.reward) : ''}${b.sieged ? ' · 🏹 Belagerung beginnt' : ''}</span>`;
       ban.hidden = false;
       ban.classList.toggle('good', b.won);
       clearTimeout(S.banTimer);
@@ -1876,7 +1909,9 @@
     const L = c.lair && K.LAIRS[c.lair];
     const kind = L ? `${L.icon} ${L.name}` : c.capital ? '👑 Hauptstadt' : c.throne ? '👑 Thronstadt' : c.building ? K.BUILDINGS[c.building].name : c.hut ? '🛖 Dorf' : '';
     const px = c.owner >= 0 && c.owner !== S.me ? K.pactOf(st, S.me, c.owner) : null;
-    const chips = [px ? `${K.PACTS[px.kind].icon} ${K.PACTS[px.kind].name}` : '', T.name, `${K.PSIZE[c.sz].name}e Provinz`, c.river ? '🏞️ Fluss' : '', c.coast ? '⚓ Küste' : '', kind, c.walls ? '🧱 Stadtmauern' : '', `🛡️ ×${K.defMult(c, false).toFixed(2).replace(/\.?0+$/, '')}`]
+    const W = c.wonder && K.WONDERS[c.wonder];
+    const chips = [px ? `${K.PACTS[px.kind].icon} ${K.PACTS[px.kind].name}` : '', T.name, `${K.PSIZE[c.sz].name}e Provinz`, c.river ? '🏞️ Fluss' : '', c.coast ? '⚓ Küste' : '', kind, W ? `${W.icon} ${W.name}` : '', c.ore ? '⛏️ Erz' : '',
+      c.walls ? '🧱 Stadtmauern' : '', `🛡️ ×${K.defMult(c, 0).toFixed(2).replace(/\.?0+$/, '')}`, c.unrest > 0 ? `✊ Widerstand ${c.unrest}` : '', c.siege ? `🏹 belagert (${c.siege.n})` : '']
       .filter(Boolean).map(t => `<span class="chip">${t}</span>`).join('');
     const mine = c.owner === S.me && st.turn === S.me;
     const divs = c.divs.map(v => `<div class="urow"><b class="dname">${esc(v.name)}</b><span class="chips">${unitChips(v.u)}</span>
@@ -1891,7 +1926,9 @@
     } else if (truceProtected(i) && c.owner !== S.me) extra = `<div class="tag">🕊️ Friedenszeit bis Runde ${st.truce}</div>`;
     box.innerHTML = `<div class="ihead"><b>${esc(c.name)}</b><span>${c.owner >= 0 ? pName(c.owner) : '<span class="tag">Neutral</span>'}${canHover ? '' : '<button class="ghost iclose" data-unpin title="Schließen">✕</button>'}</span></div>
       <div class="chips">${chips}</div>
-      <div class="tag">Ertrag pro Runde: ${coin('+' + y.gold)}${y.sci ? ' ' + scroll('+' + y.sci) : ''}${K.RKEYS.filter(k => y[k]).map(k => ' ' + resAmt(k, '+' + y[k])).join('')}${c.owner < 0 ? ' (nach Eroberung)' : ''}</div>
+      <div class="tag">Ertrag pro Runde: ${coin('+' + y.gold)}${y.sci ? ' ' + scroll('+' + y.sci) : ''}${K.RKEYS.filter(k => y[k]).map(k => ' ' + resAmt(k, '+' + y[k])).join('')}${c.owner < 0 ? ' (nach Eroberung)' : ''}${c.unrest > 0 ? ' – im Widerstand: nichts' : ''}</div>
+      <div class="tag">👥 Einwohner ${c.pop || 0} / ${K.popCap(st, c)} ${resAmt('food', y.food)} Nahrung</div>
+      ${W ? `<div class="treasure">${W.icon} Weltwunder ${W.name}: ${W.desc}${c.owner < 0 && K.total(c.u) > 3 ? ' – schwer bewacht!' : ''}</div>` : ''}
       ${c.hut ? '<div class="tag">Erobern bringt Gold, Wissen oder Rohstoffe</div>' : ''}
       ${myTurn() && S.mode === 'build' && c.owner === S.me ? `<div class="buildable">🔨 Hier baubar: ${[...BLDG_ORDER.filter(b => K.canBuild(st, S.me, i, b)).map(b => K.BUILDINGS[b].name), ...(K.isCity(c) && !c.walls && K.hasTech(st, S.me, 'fortification') ? ['Stadtmauern'] : [])].join(', ') || (c.building ? `nichts – hier steht schon ${K.BUILDINGS[c.building].name}` : 'nichts (Forschung oder Gelände fehlt)')}</div>` : ''}
       ${L ? `<div class="treasure">💰 Schatz: +${L.gold} Gold, +${L.sci} Wissen – besiege die Monster!</div>` : ''}
@@ -1935,11 +1972,12 @@
       <div class="tp-who">${st.over ? 'Spiel beendet' : myTurn() ? 'Du bist am Zug' : esc(cur.name) + ' ist am Zug…'}</div></div>`;
     if (pl) {
       const s = K.stats(st, S.me);
-      $('#res').innerHTML = `<span title="Gold: Einnahmen ${s.gross} − Unterhalt ${s.upkeep} = ${s.income} pro Runde">${coin(pl.gold)}<small>${s.income >= 0 ? '+' : ''}${s.income}</small></span><span class="sep"></span>
+      $('#res').innerHTML = `<span title="Gold: Einnahmen ${s.gross} − Sold ${s.upkeep}${s.occ ? ` − Besatzung ${s.occ}` : ''} = ${s.income} pro Runde">${coin(pl.gold)}<small class="${s.income < 0 ? 'neg' : ''}">${s.income >= 0 ? '+' : ''}${s.income}</small></span><span class="sep"></span>
         <span title="Wissen: für Forschung">${scroll(pl.sci)}<small>+${s.sciIncome}</small></span><span class="sep"></span>
-        ${K.RKEYS.map(k => `<span class="rs" title="${K.RES[k].name}: ${s[k + 'Income'] >= 0 ? '+' : ''}${s[k + 'Income']} pro Runde${k === 'food' ? ` (Armeen essen ${s.feed})` : ''}">${resAmt(k, s[k])}<small class="${s[k + 'Income'] < 0 ? 'neg' : ''}">${s[k + 'Income'] >= 0 ? '+' : ''}${s[k + 'Income']}</small></span>`).join('')}<span class="sep"></span>
+        ${K.RKEYS.map(k => `<span class="rs" title="${K.RES[k].name}: +${s[k + 'Income']} pro Runde">${resAmt(k, s[k])}<small>+${s[k + 'Income']}</small></span>`).join('')}<span class="sep"></span>
+        <span class="mp" title="Wehrfähige: ${s.mpFree} frei – ${Math.round(s.mpRate * 100)} % deiner ${s.pop} Einwohner können dienen (${s.mpCap}), ${s.troops} sind schon Soldaten">👥 ${s.mpFree}<small>/${s.mpCap}</small></span><span class="sep"></span>
         <span class="cells" title="Deine Provinzen">🏳️ ${s.cells}</span><span class="sep cells"></span>
-        <span title="Deine Truppen (Unterhalt ${s.upkeep} Gold pro Runde)">⚔️ ${s.troops}</span>`;
+        <span title="Deine Truppen (Sold ${s.upkeep} Gold pro Runde)">⚔️ ${s.troops}</span>`;
     }
     const nRes = researchable();
     $('#btnResearch').classList.toggle('ready', !!(nRes && myTurn()));
@@ -1988,9 +2026,10 @@
     const st = S.state, c = st.cells[i], pl = st.players[S.me];
     const T = K.TERRAIN[c.terrain], room = K.roomIn(c);
     const y = K.provinceYield(st, c);
-    const yields = [`${coin('+' + y.gold)}`, y.sci ? scroll('+' + y.sci) : '', ...K.RKEYS.filter(k => y[k]).map(k => resAmt(k, '+' + y[k]))].filter(Boolean).join(' ');
+    const yields = y.unrest ? '<span class="tag">✊ nichts (Widerstand)</span>' : [`${coin('+' + y.gold)}`, y.sci ? scroll('+' + y.sci) : '', ...K.RKEYS.filter(k => y[k]).map(k => resAmt(k, '+' + y[k]))].filter(Boolean).join(' ');
+    const pcap = K.popCap(st, c), grow = K.growthOf(st, c), s0 = K.stats(st, S.me);
     let h = `<div class="pp-head"><span class="pp-title"><b>${c.capital ? '👑 ' : ''}${esc(c.name)}</b>
-        <small>${T.name} · ${K.PSIZE[c.sz].name} · 👥 ${K.total(c.u)}/${K.capOf(c)}</small></span>
+        <small>${T.name} · ${K.PSIZE[c.sz].name} · ⚔️ ${K.total(c.u)}/${K.capOf(c)} · <span title="Einwohner / Platz (Nahrung ${y.food} → Platz für ${pcap})">👥 ${c.pop || 0}/${pcap}${grow > 0 ? ` <i class="grow">+${grow}</i>` : grow < 0 ? ` <i class="shrink">${grow}</i>` : ''}</span></small></span>
         <span class="pp-yield" title="Ertrag pro Runde">${yields}</span>
         <button class="ghost pp-close" data-pclose title="Schließen">✕</button></div>`;
     // Truppen
@@ -1998,6 +2037,21 @@
     const army = rd.length ? `<button class="pp-army primary" data-parmy>⚔️ Armee auswählen <small>${rd.reduce((n, v) => n + K.total(v.u), 0)} bereit</small></button>`
       : K.total(c.u) ? '<span class="tag">Die Truppen hier haben sich schon bewegt.</span>' : '<span class="tag">Keine Truppen hier.</span>';
     const shoot = c.u.l && !c.shot && mt ? '<button class="shootbtn" data-pshoot>🏹 Fernschuss</button>' : '';
+    // Zustand der Provinz: Widerstand, Belagerung, Weltwunder, Erz, Hafen
+    const W = c.wonder && K.WONDERS[c.wonder];
+    let note = '';
+    if (c.unrest > 0) {
+      const cost = c.unrest * K.PACIFY_GOLD;
+      note += `<div class="pp-alert">✊ <b>Widerstand</b> – noch ${c.unrest} Runde${c.unrest > 1 ? 'n' : ''}: keine Erträge, kein Ausbilden, kostet ${K.OCC_GOLD} Gold pro Runde. 3+ Truppen und ein Tempel in der Nähe beruhigen schneller.
+        <button data-ppac ${!mt || pl.gold < cost ? 'disabled' : ''}>💰 Freikaufen · ${cost} Gold</button></div>`;
+    }
+    if (c.siege) note += `<div class="pp-alert bad">🏹 <b>Belagert</b> von ${pName(c.siege.by)} (Runde ${c.siege.n}): kein Ausbilden, keine Verstärkung, die Mauern bröckeln${c.siege.n >= 2 ? ' und Verteidiger hungern' : ''}. Vertreibe die Belagerer aus den Nachbarprovinzen!</div>`;
+    if (W) note += `<div class="pp-info">${W.icon} <b>${W.name}</b> – Weltwunder: ${W.desc}</div>`;
+    if (c.ore) note += `<div class="pp-info">⛏️ <b>Erzvorkommen</b>: +1 Eisen${c.building === 'mine' ? ' (mit Mine +1 mehr)' : ' – eine Mine holt noch mehr heraus'}</div>`;
+    if (c.building === 'harbor') {
+      const n = K.seaTargets(st, i).length, tp = K.tradePartners(st, c);
+      note += `<div class="pp-info">⛵ <b>Hafen</b>: Truppen von hier segeln zu ${n} Küste${n === 1 ? '' : 'n'} – wähle die Armee, die Ziele leuchten auf. Seehandel: +${tp} Gold (${tp} ${tp === 1 ? 'Partnerhafen' : 'Partnerhäfen'} in Reichweite).</div>`;
+    } else if (c.coast && !c.building) note += `<div class="pp-info soft">⚓ Küste: ${K.hasTech(st, S.me, 'navigation') ? 'Baue hier einen Hafen' : 'Mit der Forschung ⛵ Seefahrt baust du hier einen Hafen'} – für Seehandel und Landungen an fremden Küsten.</div>`;
     // Ausbilden
     let rec = '';
     if (K.canRecruit(c)) {
@@ -2005,13 +2059,13 @@
       const locked = own.length - open.length;
       const card = t => {
         const u = K.UNITS[t], miss = K.lack(pl, u.cost, u.need);
-        return `<button class="card-btn" data-ru="${t}" ${!mt || miss || room < 1 ? 'disabled' : ''}
-            title="${u.name}: Angriff ${u.atk}, Verteidigung ${u.def}, Bewegung ${u.mp}${u.note ? ' – ' + u.note : ''}${miss ? ' – ' + miss : ''}">
+        return `<button class="card-btn" data-ru="${t}" ${!mt || miss || room < 1 || s0.mpFree < 1 ? 'disabled' : ''}
+            title="${u.name}: Angriff ${u.atk}, Verteidigung ${u.def}, Bewegung ${u.mp}, Sold ${u.upk} Gold${u.note ? ' – ' + u.note : ''}${miss ? ' – ' + miss : s0.mpFree < 1 ? ' – keine Wehrfähigen frei' : ''}">
           <svg class="ico"><use href="#u-${t}"/></svg>
           <span><b>${u.name}</b><small>A${u.atk} · V${u.def} · Bew. ${u.mp}</small></span>${price(u.cost, u.need, pl)}</button>`;
       };
       rec = `<div class="pp-sec"><div class="pp-sh"><b>🛡️ Ausbilden</b>
-          <span class="tag">${room ? `noch ${room} Plätze` : 'Provinz ist voll'}${locked ? ` · 🔒 ${locked} weitere durch Forschung` : ''}</span>
+          <span class="tag">${room ? `noch ${room} Plätze` : 'Provinz ist voll'} · <span title="Wehrfähige: wie viele Menschen noch Soldat werden können">👥 ${s0.mpFree} Wehrfähige</span>${locked ? ` · 🔒 ${locked} weitere durch Forschung` : ''}</span>
           <div class="amount"><button data-amt="1" class="${S.amount === 1 ? 'on' : ''}">×1</button><button data-amt="5" class="${S.amount === 5 ? 'on' : ''}">×5</button></div></div>
         <div class="shop">${open.map(card).join('')}</div></div>`;
     }
@@ -2038,6 +2092,7 @@
     if (later.length) bld += `<span class="tag pp-later">🔒 Mit Forschung hier möglich: ${later.map(b => K.BUILDINGS[b].name).join(', ')}</span>`;
     if (demoOk && mt) bld += `<button class="ghost-btn" data-pdemo>🔨 ${c.building ? K.BUILDINGS[c.building].name : 'Stadtmauern'} abreißen</button>`;
     h += `<div class="pp-body">
+      ${note ? `<div class="pp-sec pp-notes">${note}</div>` : ''}
       <div class="pp-sec pp-troops">${army}${shoot}</div>
       ${rec}
       <div class="pp-sec"><div class="pp-sh"><b>🔨 Bauen</b>${c.building && !can.length ? '' : ''}</div>${bld}</div>
@@ -2085,8 +2140,8 @@
     if (d.mode) { deselect(); render(); }
     else if (d.ru) {
       const i = S.focus, c = st.cells[i], U = K.UNITS[d.ru];
-      const n = Math.min(S.amount, K.maxAfford(st.players[S.me], d.ru), K.roomIn(c));
-      if (n < 1) return toast(`Zu wenig – ein ${U.name} kostet ${priceText(U.cost, U.need)}.`);
+      const n = Math.min(S.amount, K.maxAfford(st.players[S.me], d.ru, st, S.me), K.roomIn(c));
+      if (n < 1) return toast(K.manpower(st, S.me).free < 1 ? 'Keine Wehrfähigen frei – lass deine Bevölkerung wachsen (Bauernhöfe, Kornspeicher, Heilkunde).' : `Zu wenig – ein ${U.name} kostet ${priceText(U.cost, U.need)}.`);
       act({ type: 'recruit', cell: i, units: { [d.ru]: n } });
     }
     else if (d.pb) act(d.pb === 'walls' ? { type: 'walls', cell: S.focus } : { type: 'build', cell: S.focus, b: d.pb });
@@ -2097,6 +2152,7 @@
       ask(`${what} in ${esc(c.name)} abreißen? Du bekommst ${priceText(Math.floor(B.cost / 2), half) || 'nichts'} zurück.`, '🔨 Abreißen').then(ok => { if (ok) act({ type: 'demolish', cell: i }); });
     }
     else if (d.parmy !== undefined) selectArmy(S.focus);
+    else if (d.ppac !== undefined) act({ type: 'pacify', cell: S.focus });
     else if (d.pshoot !== undefined) { S.shootFrom = S.focus; S.focus = -1; Sound.play('select'); toast('Wähle ein Ziel für den Fernschuss (gelb markiert).'); render(); }
     else if (d.pclose !== undefined) { deselect(); render(); }
     else if (d.pcap !== undefined) { const cap = st.cells.findIndex(c => c.capital && c.owner === S.me); if (cap >= 0) openProv(cap); }
@@ -2238,11 +2294,31 @@
         <span class="chips">${defU}</span></div>
       <h3>Angreifende Divisionen</h3>${srcHtml}
       <div class="chance ${cls}"><div>Angriff <b>${o.A.toFixed(1)}</b> gegen Verteidigung <b>${o.D.toFixed(1)}</b>
-        <span class="tag">(Verteidigung ×${o.mult.toFixed(2).replace(/\.?0+$/, '')}${o.siege ? ', Katapulte ignorieren Festungen' : ''})</span></div>
+        <span class="tag">(Verteidigung ×${o.mult.toFixed(2).replace(/\.?0+$/, '')})</span></div>
         <div class="bar"><i style="width:${p}%"></i></div><div>Siegchance <span class="pct">${p} %</span></div></div>
+      ${counterHints(force, t)}${fortHint(o, t)}
       <p class="tag ${K.total(force) > K.capOf(t) ? 'warn' : ''}">Höchstens <b>${K.capOf(t)}</b> Truppen passen nach ${esc(t.name)} (gewählt: ${K.total(force)}). Gewinnst du, ziehen die Divisionen ein. Verlierst du, sind alle angreifenden Divisionen verloren.</p>
-      <div class="row end"><button data-pclose>Abbrechen</button><button data-pgo class="danger" ${K.total(force) && K.total(force) <= K.capOf(t) ? '' : 'disabled'}>⚔️ Angreifen · ${p} %</button></div>
+      <div class="row end"><button data-pclose>Abbrechen</button>${siegeBtn(t, pl.target)}<button data-pgo class="danger" ${K.total(force) && K.total(force) <= K.capOf(t) ? '' : 'disabled'}>⚔️ Angreifen · ${p} %</button></div>
     </div>`;
+  }
+
+  // welche Einheiten hier kontern (Speere gegen Reiter, Reiter gegen Schützen, Schützen gegen Fußvolk)
+  function counterHints(force, t) {
+    const mine = K.TYPES.filter(x => force[x] && K.counterOf(x, t.u) > 1.05).map(x => K.UNITS[x].plural);
+    const theirs = K.TYPES.filter(x => t.u[x] && K.counterOf(x, force) > 1.05).map(x => K.UNITS[x].plural);
+    return (mine.length ? `<p class="tag good">✓ Vorteil: Deine ${mine.join(', ')} kontern die Verteidiger.</p>` : '') +
+      (theirs.length ? `<p class="tag warn">⚠️ Achtung: Ihre ${theirs.join(', ')} kontern deine Truppen.</p>` : '');
+  }
+  function fortHint(o, t) {
+    if (!o.fort) return '';
+    const br = Math.round(Math.min(o.breach, o.fort) * 100);
+    return `<p class="tag">🏰 Befestigung +${Math.round(o.fort * 100)} %${t.siege ? `, durch ${t.siege.n} Runde${t.siege.n > 1 ? 'n' : ''} Belagerung zermürbt` : ''}${br ? ` – deine Belagerungswaffen brechen −${br} %` : ' – Katapulte und Triboke brechen sie, eine Belagerung zermürbt sie.'}</p>`;
+  }
+  function siegeBtn(t, ti) {
+    const st = S.state;
+    if (t.owner < 0 || !K.fortBonus(t) || t.siege) return '';
+    const need = K.siegeNeed(t), have = K.besiegers(st, ti, S.me);
+    return `<button data-psiege ${have >= need ? '' : 'disabled'} title="Belagern: Die Stadt kann nichts mehr ausbilden, bekommt keine Verstärkung, und die Befestigung bröckelt jede Runde (−20 %). Dafür brauchst du ${need} Truppen in Nachbarprovinzen (du hast ${have}).">🏹 Belagern</button>`;
   }
 
   $('#planner').addEventListener('click', e => {
@@ -2258,6 +2334,7 @@
     } else if (d.pall !== undefined) pl.picks[d.pall] = readyDivs(C[+d.pall]).map(v => v.id);
     else if (d.pnone !== undefined) pl.picks[d.pnone] = [];
     else if (d.pgo !== undefined) { launchAttack(); return; }
+    else if (d.psiege !== undefined) { const to = pl.target; $('#planner').hidden = true; S.plan = null; act({ type: 'siege', to }); return; }
     renderPlanner();
   });
 
@@ -2368,7 +2445,7 @@
       return `<li class="${i === st.turn && !st.over ? 'cur' : ''} ${p.alive ? '' : 'dead'}" style="--pc:${p.color}">
         ${avatarHTML(S.avatars && S.avatars[i], p.name, p.color, 'sm')}
         <span class="nm">${esc(p.name)}${i === S.me ? ' (Du)' : ''}${mark}${traitor}${away}${p.realm ? `<small class="realmname">🏰 ${esc(p.realm)}</small>` : ''}</span>
-        ${i === S.me && p.alive && !st.over ? '<button data-rename class="ghost" title="Reich umbenennen">✏️</button>' : ''}
+        ${i === S.me && p.alive && !st.over ? '<button data-rename class="ghost" title="Reich und Hauptstadt umbenennen">✏️</button>' : ''}
         ${kick}
         <span class="st">${st.mode === 'throne' ? `<b class="crowns">👑 ${st.crowns[i]}/${st.crownGoal}</b> · ` : ''}${p.type === 'ai' ? `🤖 ${LEVELS[p.level] || ''} · ` : ''}🏳️ ${s.cells} · ⚔️ ${s.troops} · 🔬 ${s.techs} · ${K.score(st, i)} Punkte</span>
         ${dip}
@@ -2817,10 +2894,10 @@
     const rows = st.players.map((pl, i) => {
       const x = K.stats(st, i), r = pl.rec || {};
       return `<tr class="${pl.alive ? '' : 'dead'}" style="--pc:${pl.color}"><td class="who">${avatarHTML(S.avatars && S.avatars[i], pl.name, pl.color, 'xs')} ${esc(pl.name)}${i === S.me ? ' (Du)' : ''}</td>
-        <td>${x.cells}</td><td>${x.troops}</td><td>${x.income >= 0 ? '+' : ''}${x.income}</td><td>+${x.sciIncome}</td><td>${x.techs}</td><td>${x.buildings}</td>
+        <td>${x.cells}</td><td>${x.troops}</td><td>${x.pop}</td><td>${x.wonders || '–'}</td><td>${x.income >= 0 ? '+' : ''}${x.income}</td><td>+${x.sciIncome}</td><td>${x.techs}</td><td>${x.buildings}</td>
         <td>${r.won || 0} / ${r.lost || 0}</td><td>${r.defended || 0}</td><td>${r.conq || 0}</td><td>${r.killed || 0}</td><td>${r.casualties || 0}</td><td>${r.monsters || 0}</td><td><b>${K.score(st, i)}</b></td></tr>`;
     }).join('');
-    const table = `<div class="tscroll"><table class="unit-table stat-table"><thead><tr><th>Herrscher</th><th>🏳️ Prov.</th><th>⚔️ Truppen</th><th>🪙 Gold/R</th><th>📜 Wissen/R</th>
+    const table = `<div class="tscroll"><table class="unit-table stat-table"><thead><tr><th>Herrscher</th><th>🏳️ Prov.</th><th>⚔️ Truppen</th><th>👥 Einw.</th><th>🗿 Wunder</th><th>🪙 Gold/R</th><th>📜 Wissen/R</th>
       <th>🔬 Techs</th><th>🏠 Bauten</th><th>Angriffe ✓/✗</th><th>🛡️ abgewehrt</th><th>🚩 erobert</th><th>💀 besiegt</th><th>🩸 verloren</th><th>🐉 Monster</th><th>Punkte</th></tr></thead>
       <tbody>${rows}</tbody></table></div>`;
     const chart = `<div class="seg metrics">${METRICS.map(([l, k]) => `<button data-sm="${k}" class="${S.statMetric === k ? 'on' : ''}">${l}</button>`).join('')}</div>
@@ -2879,19 +2956,24 @@
 
   function renameRealm() {
     const st = S.state, me = st.players[S.me], o = $('#confirm');
-    o.innerHTML = `<div class="modal center"><h2>🏰 Dein Reich</h2><p class="tag">Wie soll dein Reich heißen? Der Name steht groß auf der Karte.</p>
-      <input id="realmIn" maxlength="24" value="${esc(me.realm || '')}" placeholder="z. B. Königreich Nordmark">
+    const cap = st.cells.find(c => c.capital && c.owner === S.me);
+    o.innerHTML = `<div class="modal center"><h2>🏰 Dein Reich</h2><p class="tag">Wie sollen dein Reich und deine Hauptstadt heißen? Der Reichsname steht groß auf der Karte.</p>
+      <label class="field">Reich<input id="realmIn" maxlength="24" value="${esc(me.realm || '')}" placeholder="z. B. Königreich Nordmark"></label>
+      ${cap ? `<label class="field">👑 Hauptstadt<input id="capIn" maxlength="24" value="${esc(cap.name)}" placeholder="z. B. Königsfeld"></label>` : ''}
       <div class="row"><button data-a="0">Abbrechen</button><button data-a="1" class="primary">Speichern</button></div></div>`;
     o.hidden = false;
-    const inp = $('#realmIn');
+    const inp = $('#realmIn'), capIn = $('#capIn');
     inp.focus(); inp.select();
     const done = ok => {
       o.hidden = true;
       if (!ok) return;
       const nm = inp.value.replace(/\s+/g, ' ').trim().slice(0, 24);
-      act({ type: 'realm', name: nm });
+      if (nm !== (me.realm || '')) act({ type: 'realm', name: nm });
       $('#realm').value = nm; store.set('kingdoms-realm', nm);
+      const cn = capIn ? capIn.value.replace(/\s+/g, ' ').trim().slice(0, 24) : '';
+      if (cap && cn.length >= 2 && cn !== cap.name) { act({ type: 'capname', name: cn }); $('#capname').value = cn; store.set('kingdoms-capname', cn); }
     };
+    if (capIn) capIn.onkeydown = e => { if (e.key === 'Enter') done(true); };
     inp.onkeydown = e => { if (e.key === 'Enter') done(true); };
     o.onclick = e => { const b = e.target.closest('[data-a]'); if (b) done(b.dataset.a === '1'); else if (e.target === o) done(false); };
   }
@@ -2985,22 +3067,23 @@
   function openHelp() {
     const units = K.TYPES.filter(t => !K.UNITS[t].monster).map(t => {
       const u = K.UNITS[t];
-      return `<tr><td><svg class="ico"><use href="#u-${t}"/></svg> ${u.name}</td><td>${priceText(u.cost, u.need)}</td><td>${u.atk}</td><td>${u.def}</td><td>${u.mp}</td>
+      return `<tr><td><svg class="ico"><use href="#u-${t}"/></svg> ${u.name}</td><td>${priceText(u.cost, u.need)}<br><small>Sold ${u.upk}</small></td><td>${u.atk}</td><td>${u.def}</td><td>${u.mp}</td>
         <td>${u.tech ? K.TECHS[u.tech].name : '–'}${u.note ? `<br><small>${u.note}</small>` : ''}</td></tr>`;
     }).join('');
     const bldgs = BLDG_ORDER.map(b => {
       const B = K.BUILDINGS[b];
       return `<tr><td><svg class="ico"><use href="${b === 'fort' ? '#castle' : '#b-' + b}" style="color:#e8b64c"/></svg> ${B.name}</td><td>${priceText(B.cost, B.need)}</td>
-        <td>${B.desc}</td><td>${B.on.length === 4 ? 'überall' : B.on.map(t => K.TERRAIN[t].name).join(', ')}</td><td>${B.tech ? K.TECHS[B.tech].name : '–'}</td></tr>`;
+        <td>${B.desc}</td><td>${B.coast ? 'Küste' : B.on.length >= 5 ? 'überall' : B.on.map(t => K.TERRAIN[t].name).join(', ') + (B.ore ? ', Erz' : '')}</td><td>${B.tech ? K.TECHS[B.tech].name : '–'}</td></tr>`;
     }).join('');
     const terr = Object.values(K.TERRAIN).map(T =>
-      `<tr><td>${T.name}</td><td>${T.gold}</td><td>${T.res ? '+1 ' + K.RES[T.res].icon + ' ' + K.RES[T.res].name : '–'}</td><td>${T.def ? '+' + Math.round(T.def * 100) + ' %' : '–'}</td></tr>`).join('');
+      `<tr><td>${T.name}</td><td>${T.gold}</td><td>${T.res ? K.RES[T.res].icon + ' ' + K.RES[T.res].name : '–'}</td><td>${T.pop}</td><td>${T.def ? '+' + Math.round(T.def * 100) + ' %' : '–'}</td></tr>`).join('');
+    const wonders = Object.values(K.WONDERS).map(W => `<b>${W.icon} ${W.name}</b> (${W.coast ? 'Küste' : W.on.map(t => K.TERRAIN[t].name).join(', ')}): ${W.desc}`).join('<br>');
     const sizes = Object.values(K.PSIZE).map(P =>
       `<tr><td>${P.name}</td><td>+${P.gold}</td><td>${P.def ? '+' + Math.round(P.def * 100) + ' %' : '–'}</td></tr>`).join('');
     $('#help').innerHTML = `<div class="modal wide help">
       <div class="mhead"><h2>📖 Spielanleitung</h2><button data-close class="ghost" title="Schließen (Esc)">✕</button></div>
       <h3>Ziel</h3>
-      <p>Vernichte alle Gegner. Nach 40 Runden gewinnt, wer die meisten Punkte hat (3 pro Provinz, 2 pro Technologie, 1 pro Gebäude).</p>
+      <p>Vernichte alle Gegner. Nach 40 Runden gewinnt, wer die meisten Punkte hat (3 pro Provinz, 2 pro Technologie, 1 pro Gebäude, 4 pro Weltwunder, 1 je 10 Einwohner).</p>
       <h3>Dein Zug</h3>
       <ol>
         <li><b>🔬 Forschen</b> – mit Wissen neue Einheiten, Gebäude und Boni freischalten.</li>
@@ -3020,12 +3103,36 @@
       <p>Im <b>Angriffsplan</b> wählst du Divisionen aus <b>allen angrenzenden Provinzen</b>, die gemeinsam angreifen. Die <b>Angriffskraft</b> wird mit der <b>Verteidigungskraft</b>
         (Verteidigungswerte × Gelände-, Größen- und Festungsbonus) verglichen. Daraus ergibt sich die <b>Siegchance</b>.
         Gewinnst du, ziehen die Überlebenden ein. Verlierst du, ist die Angriffsarmee verloren.</p>
+      <h3>Konter – gemischte Heere gewinnen</h3>
+      <p>Jede Truppengattung hat Stärken und Schwächen. Der Bonus wächst mit dem Anteil der passenden Gegner im feindlichen Heer:</p>
+      <ul>
+        <li><b>Speerkämpfer</b> gegen <b>Ritter und Schwere Reiter</b> (bis ×2,5) – billig und tödlich für Reiterei.</li>
+        <li><b>Armbrustschützen</b> durchschlagen Rüstung: stark gegen <b>Ritter</b> (brauchen Eisen).</li>
+        <li><b>Ritter und Schwere Reiter</b> überrennen <b>Bogen- und Langbogenschützen</b> und <b>Belagerungswaffen</b>.</li>
+        <li><b>Bogen- und Langbogenschützen</b> sind stark gegen <b>Fußvolk</b> (Krieger, Speerkämpfer).</li>
+      </ul>
+      <p>Wer nur Schwere Reiter schickt, läuft in Speere. Im Angriffsplan siehst du, wer wen kontert.</p>
+      <h3>Belagerung</h3>
+      <p>Festungen (+75 %), Hauptstädte (+50 %), Wachtürme (+25 %) und Stadtmauern (+50 %) machen eine Provinz schwer einnehmbar. Uneinnehmbar ist nichts:</p>
+      <ul>
+        <li><b>Katapulte</b> brechen je −20 %, <b>Triboke</b> je −35 % der Befestigung – nimm sie zum Sturm mit.</li>
+        <li><b>🏹 Belagern</b> (im Angriffsplan): Stehen genug Truppen um eine feindliche Stadt, belagerst du sie. Dann kann dort nichts mehr ausgebildet werden, keine Verstärkung kommt hinein, die Befestigung bröckelt jede Runde um 20 %, und ab der 3. Runde verhungern Verteidiger.</li>
+        <li>Ein gescheiterter Sturm auf eine Stadt startet die Belagerung von selbst, wenn genug Truppen davor stehen. Ziehen die Belagerer ab, ist sie vorbei.</li>
+      </ul>
       <h3>Rohstoffe</h3>
-      <p>Neben <b>Gold</b> und <b>📜 Wissen</b> gibt es drei Rohstoffe: <b>🌾 Nahrung</b> (Ebenen, Flüsse, Bauernhöfe), <b>🪵 Holz</b> (Wälder, Sägewerke) und <b>🪨 Stein</b> (Gebirge, Steinbrüche).
-        Jede Provinz liefert jede Runde ihren Rohstoff, große Provinzen etwas mehr; die Hauptstadt liefert von allem ein bisschen.
-        Soldaten brauchen Nahrung, Bogen und Belagerungswaffen Holz, Festungen, Türme, Tempel und Mauern Stein. Oben siehst du deinen Vorrat und was pro Runde dazukommt.<br>Armeen essen: je 4 Einheiten 1 🌾 Nahrung pro Runde. Fehlt Nahrung, wird sie mit Gold zugekauft.</p>
+      <p>Neben <b>Gold</b> und <b>📜 Wissen</b> gibt es drei Rohstoffe zum Bezahlen: <b>🪵 Holz</b> (Wälder, Sägewerke), <b>🪨 Stein</b> (Gebirge, Steinbrüche) und <b>⛓️ Eisen</b> (⛏️ Erzvorkommen und Minen).
+        Holz und Stein liefern erst mittlere und große Provinzen; die Hauptstadt liefert von allem ein bisschen, auch 1 Eisen.
+        Bogen, Speere und Belagerungswaffen brauchen Holz, Festungen, Türme, Tempel und Mauern Stein – und die starken Einheiten (Ritter, Schwere Reiter, Armbrustschützen, Triboke) brauchen <b>Eisen</b>. Wer kein Erz hat, muss es erobern.</p>
+      <h3>Bevölkerung und Wehrfähige</h3>
+      <p><b>🌾 Nahrung</b> wird nicht gelagert: Sie ist die Versorgung deiner Provinzen. Jede Nahrung bietet Platz für 2 Einwohner, dazu kommt ein Grundplatz je Gelände (Ebene 4, Wald 3, Gebirge 2, Wüste und Schnee 1) und Größe; die Hauptstadt hat +8.
+        Jede Runde wächst eine Provinz um 1 Einwohner, bis sie voll ist – schneller mit <b>Kornspeicher</b>, <b>Tempel</b>, der Forschung <b>Heilkunde</b> und manchen Weltwundern. Mehr Platz schaffen <b>Bauernhöfe</b> und Kornspeicher.</p>
+      <p>Wie bei Hearts of Iron kann nur ein Teil des Volkes Soldat werden: <b>50 % der Einwohner</b> sind wehrfähig (mit <b>Wehrpflicht</b> 65 %). Wer schon dient, zählt mit. Oben zeigt <b>👥</b> die freien Wehrfähigen – sind es 0, kannst du nicht ausbilden.
+        Krieg kostet Menschen: Eine eroberte Provinz verliert ein Viertel ihrer Einwohner.</p>
+      <h3>Widerstand</h3>
+      <p>Frisch eroberte Provinzen leisten <b>✊ Widerstand</b>: Sie liefern nichts, man kann dort nichts ausbilden, und die Besatzung kostet 1 Gold pro Runde. Neutrale Provinzen geben nach 2 Runden nach, fremde nach 5, eine Hauptstadt nach 8.
+        3 oder mehr Truppen in der Provinz und ein Tempel in der Nähe beruhigen schneller – oder du <b>kaufst den Widerstand frei</b> (3 Gold je Runde Widerstand). Befreite Monsterhorte jubeln dir zu.</p>
       <h3>Unterhalt</h3>
-      <p>Armeen kosten Sold: je 4 Einheiten 1 Gold pro Runde. Oben bei deinem Gold siehst du dein Einkommen nach Abzug des Unterhalts.</p>
+      <p>Armeen kosten Sold: Krieger und Bogenschützen ¼ Gold, Ritter und Katapulte ½, Schwere Reiter und Triboke ¾ Gold pro Runde. Oben bei deinem Gold siehst du dein Einkommen nach Abzug von Sold und Besatzung.</p>
       <h3>Karte</h3>
       <p>Ziehen verschiebt die Karte, Mausrad oder zwei Finger zoomen. Dicke farbige Linien sind <b>Reichsgrenzen</b>, gestrichelte Linien über das Meer sind <b>Seewege</b>.</p>
       <h3>Provinzgröße</h3>
@@ -3036,8 +3143,10 @@
       <h3>Gebäude</h3>
       <div class="tscroll"><table class="unit-table"><thead><tr><th>Gebäude</th><th>Kosten</th><th>Wirkung</th><th>Gelände</th><th>Benötigt</th></tr></thead><tbody>${bldgs}</tbody></table></div>
       <h3>Gelände</h3>
-      <div class="tscroll"><table class="unit-table"><thead><tr><th>Gelände</th><th>Gold</th><th>Rohstoff</th><th>Verteidigung</th></tr></thead><tbody>${terr}</tbody></table></div>
-      <p>Die Hauptstadt bringt zusätzlich +3 Gold, +2 Wissen, +2 Nahrung, +1 Holz und +1 Stein und verteidigt +50 %. 🛖 Dörfer geben beim Erobern Gold, Wissen oder Rohstoffe.</p>
+      <div class="tscroll"><table class="unit-table"><thead><tr><th>Gelände</th><th>Gold</th><th>Rohstoff</th><th>Einwohner</th><th>Verteidigung</th></tr></thead><tbody>${terr}</tbody></table></div>
+      <p>Die Hauptstadt bringt zusätzlich +3 Gold, +2 Wissen, +2 Nahrung, +2 Holz, +1 Stein und +1 Eisen und verteidigt +50 %. Ihren Namen gibst du im Profil oder unter 👑 Reiche mit ✏️. 🛖 Dörfer geben beim Erobern Gold, Wissen oder Rohstoffe.</p>
+      <h3>Weltwunder</h3>
+      <p>Auf jeder Karte liegen ein paar seltene Weltwunder. Wer sie hält, bekommt jede Runde ihren Bonus und 4 Punkte – manche werden von starken Wächtern verteidigt.<br>${wonders}</p>
       <h3>Tastenkürzel</h3>
       <p>${KEYS.map(([k, v]) => `<b>${k}</b> ${v}`).join(' · ')}</p>
       <h3>Schwierigkeit</h3>
@@ -3047,13 +3156,14 @@
         Jeder Schütze trifft mit etwa 55 % (Gelände, Größe und Festungen schützen). Pfeile treffen nur leichte Einheiten mit Verteidigung bis 3 – Trolle und Drachen sind zu zäh.<br>
         Mit der Forschung <b>🔨 Abrissarbeiten</b> kannst du unter „Bauen“ eigene Gebäude abreißen und bekommst die Hälfte der Kosten zurück.</p>
       <h3>Stadtmauern</h3>
-      <p>Mit der Forschung <b>🧱 Befestigung</b> baust du unter „Bauen → Militär“ Stadtmauern um Hauptstadt und Festungen (${priceText(K.WALLS_COST, K.WALLS_NEED)}): +50 % Verteidigung.
-        Katapulte und Triboke brechen Mauern nur zur Hälfte (+25 % bleiben). Eroberte Mauern gehören dem Eroberer.</p>
+      <p>Mit der Forschung <b>🧱 Befestigung</b> baust du im Menü einer Hauptstadt oder Festung Stadtmauern (${priceText(K.WALLS_COST, K.WALLS_NEED)}): +50 % Verteidigung.
+        Katapulte, Triboke und Belagerungen brechen sie (siehe Belagerung). Eroberte Mauern gehören dem Eroberer.</p>
       <h3>Marschbefehle</h3>
       <p>Ziehst du eine Division auf eine <b>weit entfernte eigene Provinz</b> (oder klickst sie mit der rechten Maustaste an), bekommt sie einen <b>Marschbefehl 🚩</b>:
         Sie zieht dann jede Runde von selbst weiter, bis sie ankommt. Der Weg ist auf der Karte gestrichelt. Unter ⚔️ Armeen kannst du den Befehl mit 🚩✕ aufheben.</p>
       <h3>Seefahrt und Verbündete</h3>
-      <p>Mit der Forschung <b>⛵ Seefahrt</b> baust du in Küstenprovinzen einen <b>Hafen</b>. Truppen in einem Hafen segeln zu jeder eigenen Küstenprovinz in Reichweite – oder greifen dort direkt eine fremde Küste an.<br>
+      <p>Mit der Forschung <b>⛵ Seefahrt</b> baust du in Küstenprovinzen einen <b>Hafen</b>. So geht's: Truppen in den Hafen bringen, Armee auswählen – alle erreichbaren Küsten leuchten mit Seewegen auf (grün = eigene Provinz, rot = Angriff).
+        Tippe eine an, und die Truppen segeln dorthin oder landen direkt an einer fremden Küste. Dazu bringt jeder Hafen <b>Seehandel</b>: +1 Gold für jeden eigenen oder verbündeten Hafen in Reichweite (höchstens +3).<br>
         Durch das Land von <b>🤝 Verbündeten</b> darfst du hindurchmarschieren (stehen bleiben geht dort nicht).</p>
       <h3>Schnee und Sandwürmer</h3>
       <p>❄️ <b>Schnee</b> bedeckt den Norden: wenig Gold, etwas Stein – aber +35 % Verteidigung. 🪱 <b>Sandwürmer</b> hausen in der Wüste:
@@ -3281,6 +3391,17 @@
   // ---------- Was ist neu? ----------
   // Nach jedem Update erscheint einmal ein Fenster mit den Neuigkeiten (neueste zuerst).
   const CHANGELOG = [
+    { v: '36', title: 'Großes Strategie-Update', items: [
+      '👥 Bevölkerung: Nahrung wird nicht mehr gelagert, sie gibt Platz für Einwohner. Provinzen wachsen jede Runde, 50 % der Einwohner sind wehrfähig – oben bei 👥 siehst du, wie viele noch Soldat werden können.',
+      '⛓️ Neuer Rohstoff Eisen aus ⛏️ Erzvorkommen und Minen: Ritter, Schwere Reiter, Armbrustschützen und Triboke brauchen ihn. Einheiten und Gebäude sind teurer, Holz und Stein knapper.',
+      '⚔️ Konter: Speere schlagen Reiter, Reiter überrennen Schützen, Schützen dezimieren Fußvolk. Neu: 🎯 Armbrustschützen gegen Ritter. Nur Schwere Reiter zu schicken lohnt sich nicht mehr.',
+      '🏰 Belagerung: Festungen sind stärker (+75 %). Katapulte und Triboke brechen Mauern, mit 🏹 Belagern schneidest du eine Stadt ab – kein Ausbilden, keine Verstärkung, die Mauern bröckeln.',
+      '✊ Widerstand: Eroberte Provinzen liefern erst nach ein paar Runden etwas und kosten Gold – oder du kaufst sie frei.',
+      '🗿 Seltene Weltwunder wie Pyramiden, Feuerberg und Weltenbaum mit großen Boni – manche schwer bewacht.',
+      '👑 Gib deiner Hauptstadt einen Namen (im Profil oder mit ✏️ im Spiel). Der Reichsname steht jetzt groß und zart über deinem ganzen Gebiet.',
+      '⛵ Seefahrt ist klarer: Wählst du Truppen im Hafen, leuchten alle Seewege auf. Häfen bringen Seehandel.',
+      '🤖 KI-Gegner bekommen zufällige Namen und Farben aus einem großen Pool – trag im Profil eigene Bot-Namen ein (Freunde, Insider). Die KI baut jetzt Festungen und Kasernen und mischt ihre Heere.',
+    ] },
     { v: '35', title: 'Zurück nach dem Kicken', items: [
       '👢 Wer gekickt wurde, kann wieder ins laufende Spiel: über „🔌 Zurück in Raum“ anfragen – der Gastgeber lässt ihn mit einem Tipp wieder in sein Reich.',
     ] },

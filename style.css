@@ -1056,3 +1056,34 @@ kbd { display: inline-block; padding: .05rem .45rem; border-radius: 6px; border:
 }
 .pp-hint { margin: 0 0 .45rem; font-size: .88rem; color: #d8cfbc; line-height: 1.35; }
 @media (max-width: 860px) { .pp-hint { font-size: .82rem; } }
+
+/* ===== v36: Bevölkerung, Widerstand, Belagerung, Weltwunder, Seewege ===== */
+.realm.big { font-weight: 800; fill-opacity: .5; font-variant: small-caps; paint-order: stroke; stroke: rgba(10, 7, 3, .45); stroke-width: 1.2px; }
+#map.zoomin .realm.big { opacity: .5; }
+.wonder use { filter: drop-shadow(0 1px 1.2px rgba(0, 0, 0, .55)); }
+.w-glow { fill: #ffe9a0; opacity: .3; filter: blur(2px); animation: wglow 3.2s ease-in-out infinite; animation-play-state: var(--amb, paused); }
+@keyframes wglow { 50% { opacity: .1; } }
+.ore-mark { filter: drop-shadow(0 .5px .8px rgba(0, 0, 0, .6)); }
+.unrest-mark text { font: 900 8px var(--body); fill: #ffb070; paint-order: stroke; stroke: rgba(20, 10, 4, .85); stroke-width: 2px; text-anchor: start; }
+.siege-ring { fill: none; stroke: #ff6b6b; stroke-width: 1.4; stroke-dasharray: 3 3; opacity: .9; animation: march 1.8s linear infinite; }
+.sea-line { fill: none; stroke-width: 1.5; stroke-dasharray: 3 3; stroke-linecap: round; opacity: .9; animation: march 1.2s linear infinite;
+  filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, .85)); pointer-events: none; }
+.sea-line.own { stroke: #8be08a; }
+.sea-line.foe { stroke: #ff7b7b; }
+.a-beam { transform-box: view-box; transform-origin: 14.4px 5.6px; animation: beam 3.4s ease-in-out infinite; animation-play-state: var(--amb, paused); }
+@keyframes beam { 50% { transform: rotate(-16deg); opacity: .15; } }
+.pp-notes { display: flex; flex-direction: column; gap: .3rem; }
+.pp-alert { background: rgba(240, 138, 42, .12); border: 1px solid rgba(240, 138, 42, .4); border-radius: 8px; padding: .35rem .55rem; font-size: .82rem; line-height: 1.35; }
+.pp-alert.bad { background: rgba(229, 72, 77, .14); border-color: rgba(229, 72, 77, .45); }
+.pp-alert button { margin-left: .3rem; padding: .15rem .55rem; font-size: .8rem; }
+.pp-info { font-size: .8rem; line-height: 1.35; color: var(--muted); }
+.pp-info b { color: var(--text); }
+.pp-info.soft { opacity: .8; }
+i.grow { color: #8be08a; font-style: normal; font-weight: 800; }
+i.shrink { color: #ff8a8a; font-style: normal; font-weight: 800; }
+#res .mp small { opacity: .65; }
+.tag.good { color: #8be08a; }
+.modal .field input { width: 100%; }
+@media (prefers-reduced-motion: reduce) {
+  .siege-ring, .sea-line { animation: none; }
+}
